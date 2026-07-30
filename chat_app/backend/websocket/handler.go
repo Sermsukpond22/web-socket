@@ -102,6 +102,20 @@ func (h *WSHandler) HandleConnection(c *websocket.Conn) {
 	// Broadcast user online status
 	h.broadcastUserStatus(userID, true, nil)
 
+	// Send current statuses of friends to the newly connected user
+	friends, err := h.friendService.GetFriends(userID)
+	if err == nil {
+		for _, f := range friends {
+			isOnline := h.hub.IsUserOnline(f.ID)
+			_ = client.WriteJSON(fiber.Map{
+				"type":      "user_status",
+				"user_id":   f.ID,
+				"is_online": isOnline,
+				"last_seen": f.LastSeen,
+			})
+		}
+	}
+
 	defer func() {
 		h.hub.Unregister(client)
 		// Update last_seen to now (offline)
