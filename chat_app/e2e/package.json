@@ -1,0 +1,17 @@
+{
+  "name": "chat-app-e2e",
+  "version": "1.0.0",
+  "description": "E2E Automated Test Suite for Real-time Chat Application",
+  "main": "run_e2e.js",
+  "scripts": {
+    "test": "node run_e2e.js"
+  },
+  "keywords": [
+    "e2e",
+    "testing",
+    "websocket",
+    "chat"
+  ],
+  "author": "e2e_tester",
+  "license": "ISC"
+}

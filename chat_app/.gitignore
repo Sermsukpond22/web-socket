@@ -1,0 +1,32 @@
+﻿# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Envs
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Vue/Vite
+dist/
+dist-ssr/
+*.local
