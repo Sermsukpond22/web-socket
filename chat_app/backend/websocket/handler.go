@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"chat_app/backend/models"
-	"chat_app/backend/modules/user"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -52,14 +51,18 @@ type FriendService interface {
 	GetFriends(userID uint) ([]models.User, error)
 }
 
+type UserRepository interface {
+	UpdateLastSeen(userID uint, lastSeen *time.Time) error
+}
+
 type WSHandler struct {
 	hub            *Hub
 	messageService MessageService
 	friendService  FriendService
-	userRepo       user.UserRepository
+	userRepo       UserRepository
 }
 
-func NewWSHandler(hub *Hub, messageService MessageService, friendService FriendService, userRepo user.UserRepository) *WSHandler {
+func NewWSHandler(hub *Hub, messageService MessageService, friendService FriendService, userRepo UserRepository) *WSHandler {
 	return &WSHandler{
 		hub:            hub,
 		messageService: messageService,
@@ -69,6 +72,8 @@ func NewWSHandler(hub *Hub, messageService MessageService, friendService FriendS
 }
 
 func (h *WSHandler) HandleConnection(c *websocket.Conn) {
+	// fiber context isn't accessible directly in the websocket connection
+	// Wait, we need to extract from c.Locals
 	userIDVal := c.Locals("user_id")
 	var userID uint
 	switch v := userIDVal.(type) {
@@ -91,7 +96,7 @@ func (h *WSHandler) HandleConnection(c *websocket.Conn) {
 
 	client := NewClient(userID, c, h.hub)
 	h.hub.Register(client)
-	
+
 	// Update last_seen to null (online)
 	h.userRepo.UpdateLastSeen(userID, nil)
 	// Broadcast user online status
@@ -208,7 +213,7 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			_ = client.WriteJSON(WSErrorEvent{Type: "error", Message: err.Error()})
 			return
 		}
-		
+
 		editEvent := WSChatEvent{
 			Type:       "message_edited",
 			ID:         editedMsg.ID,
@@ -231,10 +236,10 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			_ = client.WriteJSON(WSErrorEvent{Type: "error", Message: err.Error()})
 			return
 		}
-		
+
 		deleteEvent := fiber.Map{
 			"type": "message_deleted",
-			"id": msgID,
+			"id":   msgID,
 		}
 		_ = client.WriteJSON(deleteEvent)
 		// To find the receiver, we should ideally fetch the message before deleting.

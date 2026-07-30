@@ -16,6 +16,8 @@ type UserRepository interface {
 	FindByUsername(username string) (*models.User, error)
 	SearchUsers(query string, excludeUserID uint) ([]models.User, error)
 	UpdateLastSeen(userID uint, lastSeen *time.Time) error
+	UpdateProfile(userID uint, displayName string, bio string) error
+	UpdateAvatar(userID uint, avatarURL string) error
 }
 
 type userRepository struct {
@@ -63,7 +65,9 @@ func (r *userRepository) SearchUsers(query string, excludeUserID uint) ([]models
 	if trimmed == "" {
 		return []models.User{}, nil
 	}
-	likeQuery := "%" + strings.ToLower(trimmed) + "%"
+	escapedQuery := strings.ReplaceAll(trimmed, "%", "\\%")
+	escapedQuery = strings.ReplaceAll(escapedQuery, "_", "\\_")
+	likeQuery := "%" + strings.ToLower(escapedQuery) + "%"
 	err := r.db.Where("id != ? AND (LOWER(username) LIKE ? OR LOWER(email) LIKE ?)", excludeUserID, likeQuery, likeQuery).Find(&users).Error
 	if err != nil {
 		return nil, err
@@ -73,4 +77,15 @@ func (r *userRepository) SearchUsers(query string, excludeUserID uint) ([]models
 
 func (r *userRepository) UpdateLastSeen(userID uint, lastSeen *time.Time) error {
 	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("last_seen", lastSeen).Error
+}
+
+func (r *userRepository) UpdateProfile(userID uint, displayName string, bio string) error {
+	return r.db.Model(&models.User{}).Where("id = ?", userID).Updates(models.User{
+		DisplayName: displayName,
+		Bio:         bio,
+	}).Error
+}
+
+func (r *userRepository) UpdateAvatar(userID uint, avatarURL string) error {
+	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("avatar_url", avatarURL).Error
 }

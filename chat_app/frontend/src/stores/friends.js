@@ -110,6 +110,30 @@ export const useFriendsStore = defineStore('friends', () => {
     }
   }
 
+  async function rejectFriendRequest(requestId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await fetch('/api/friends/reject', {
+        method: 'DELETE',
+        headers: getHeaders(),
+        body: JSON.stringify({ request_id: requestId })
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to reject request')
+      }
+      // Refresh list
+      await fetchPendingRequests()
+      return data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function searchUsers(query) {
     if (!query || !query.trim()) return []
     try {
@@ -138,6 +162,7 @@ export const useFriendsStore = defineStore('friends', () => {
     fetchPendingRequests,
     sendFriendRequest,
     acceptFriendRequest,
+    rejectFriendRequest,
     searchUsers
   }
 })

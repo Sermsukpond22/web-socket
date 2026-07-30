@@ -22,7 +22,9 @@ type FriendService interface {
 	SendFriendRequestByInput(fromUserID uint, input SendRequestInput) (*models.FriendRequest, error)
 	GetPendingRequests(userID uint) ([]models.FriendRequest, error)
 	AcceptFriendRequest(requestID, userID uint) (*models.FriendRequest, error)
+	RejectFriendRequest(requestID, userID uint) error
 	GetFriends(userID uint) ([]models.User, error)
+	RemoveFriend(userID, friendID uint) error
 	AreFriends(userAID, userBID uint) (bool, error)
 	SearchUsers(query string, excludeUserID uint) ([]models.User, error)
 	UpdateLastReadMessageID(userID, friendID, messageID uint) error
@@ -147,8 +149,16 @@ func (s *friendService) AcceptFriendRequest(requestID, userID uint) (*models.Fri
 	return acceptedReq, nil
 }
 
+func (s *friendService) RejectFriendRequest(requestID, userID uint) error {
+	return s.friendRepo.RejectRequest(requestID, userID)
+}
+
 func (s *friendService) GetFriends(userID uint) ([]models.User, error) {
 	return s.friendRepo.GetFriendsList(userID)
+}
+
+func (s *friendService) RemoveFriend(userID, friendID uint) error {
+	return s.friendRepo.RemoveFriend(userID, friendID)
 }
 
 func (s *friendService) AreFriends(userAID, userBID uint) (bool, error) {

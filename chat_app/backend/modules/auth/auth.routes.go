@@ -10,5 +10,6 @@ func SetupAuthRoutes(app *fiber.App, authController *AuthController, authService
 
 	auth.Post("/register", authController.Register)
 	auth.Post("/login", authController.Login)
+	auth.Post("/refresh", authController.RefreshToken)
 	auth.Get("/me", JWTMiddleware(authService), authController.Me)
 }

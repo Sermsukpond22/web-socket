@@ -11,6 +11,7 @@ type User struct {
 	Password    string     `gorm:"type:varchar(255);not null" json:"-"`
 	DisplayName string     `gorm:"type:varchar(100)" json:"display_name"`
 	Bio         string     `gorm:"type:text" json:"bio"`
+	AvatarURL   string     `gorm:"type:varchar(255)" json:"avatar_url"`
 	LastSeen    *time.Time `json:"last_seen"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`

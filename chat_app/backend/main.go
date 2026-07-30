@@ -3,6 +3,9 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"chat_app/backend/config"
 	"chat_app/backend/models"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 )
@@ -39,7 +43,7 @@ func main() {
 	// JWT Secret
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "default_jwt_secret_key_chat_app"
+		log.Fatal("JWT_SECRET environment variable is not set")
 	}
 
 	// Initialize Repositories, Services, and Controllers
@@ -57,6 +61,7 @@ func main() {
 	authController := auth.NewAuthController(authService)
 	friendController := friend.NewFriendController(friendService, wsHub)
 	messageController := message.NewMessageController(messageService)
+	userController := user.NewUserController(userRepo)
 
 	// Create Fiber App
 	app := fiber.New(fiber.Config{
@@ -65,8 +70,20 @@ func main() {
 
 	// Use Middlewares
 	app.Use(logger.New())
+
+	// Rate Limiter
+	app.Use(limiter.New(limiter.Config{
+		Max:        100,
+		Expiration: 1 * time.Minute,
+	}))
+
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	if corsOrigins == "" {
+		corsOrigins = "http://localhost:5173, http://localhost:3000, http://127.0.0.1:5173, http://127.0.0.1:3000"
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173, http://localhost:3000, http://127.0.0.1:5173, http://127.0.0.1:3000",
+		AllowOrigins:     corsOrigins,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
 		AllowCredentials: true,
@@ -80,6 +97,7 @@ func main() {
 	auth.SetupAuthRoutes(app, authController, authService)
 	friend.SetupFriendRoutes(app, friendController, authService)
 	message.SetupMessageRoutes(app, messageController, wsHandler, authService)
+	user.RegisterUserRoutes(app, userController, auth.JWTMiddleware(authService))
 
 	// Get Port from env or default to 3000
 	port := os.Getenv("PORT")
@@ -88,7 +106,16 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %s...", port)
-	if err := app.Listen(":" + port); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
-	}
+	go func() {
+		if err := app.Listen(":" + port); err != nil {
+			log.Panic(err)
+		}
+	}()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	<-c
+	log.Println("Gracefully shutting down...")
+	_ = app.ShutdownWithTimeout(10 * time.Second)
 }

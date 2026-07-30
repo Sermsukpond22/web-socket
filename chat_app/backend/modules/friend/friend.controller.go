@@ -1,12 +1,12 @@
 package friend
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"chat_app/backend/models"
+	"chat_app/backend/utils"
 	wsPkg "chat_app/backend/websocket"
 
 	"github.com/gofiber/fiber/v2"
@@ -46,16 +46,10 @@ type PendingRequestDTO struct {
 }
 
 func (c *FriendController) SendRequest(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	if userIDVal == nil {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
-		})
-	}
-	userID, ok := userIDVal.(uint)
-	if !ok {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Invalid context user_id",
 		})
 	}
 
@@ -101,7 +95,6 @@ func (c *FriendController) SendRequest(ctx *fiber.Ctx) error {
 	}
 
 	var req *models.FriendRequest
-	var err error
 
 	if input.ToUserID > 0 || input.ToUsername != "" {
 		req, err = c.friendService.SendFriendRequestByInput(userID, input)
@@ -138,16 +131,10 @@ func (c *FriendController) SendRequest(ctx *fiber.Ctx) error {
 }
 
 func (c *FriendController) GetPendingRequests(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	if userIDVal == nil {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
-		})
-	}
-	userID, ok := userIDVal.(uint)
-	if !ok {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Invalid context user_id",
 		})
 	}
 
@@ -175,16 +162,10 @@ func (c *FriendController) GetPendingRequests(ctx *fiber.Ctx) error {
 }
 
 func (c *FriendController) AcceptRequest(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	if userIDVal == nil {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
-		})
-	}
-	userID, ok := userIDVal.(uint)
-	if !ok {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Invalid context user_id",
 		})
 	}
 
@@ -247,16 +228,10 @@ func (c *FriendController) AcceptRequest(ctx *fiber.Ctx) error {
 }
 
 func (c *FriendController) SearchUsers(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	if userIDVal == nil {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
-		})
-	}
-	userID, err := parseUintVal(userIDVal)
-	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Invalid context user_id",
 		})
 	}
 
@@ -272,16 +247,10 @@ func (c *FriendController) SearchUsers(ctx *fiber.Ctx) error {
 }
 
 func (c *FriendController) GetFriends(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	if userIDVal == nil {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
-		})
-	}
-	userID, ok := userIDVal.(uint)
-	if !ok {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Invalid context user_id",
 		})
 	}
 
@@ -295,21 +264,84 @@ func (c *FriendController) GetFriends(ctx *fiber.Ctx) error {
 	return ctx.Status(fiber.StatusOK).JSON(friends)
 }
 
-func parseUintVal(v interface{}) (uint, error) {
-	switch val := v.(type) {
-	case float64:
-		return uint(val), nil
-	case uint:
-		return val, nil
-	case int:
-		return uint(val), nil
-	case string:
-		p, err := strconv.ParseUint(strings.TrimSpace(val), 10, 64)
-		if err != nil {
-			return 0, err
-		}
-		return uint(p), nil
-	default:
-		return 0, fmt.Errorf("invalid type")
+func (c *FriendController) RejectRequest(ctx *fiber.Ctx) error {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
 	}
+
+	var payload AcceptRequestPayload
+	if err := ctx.BodyParser(&payload); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request payload",
+		})
+	}
+
+	var requestID uint
+	reqIDVal := payload.RequestID
+	if reqIDVal == nil {
+		reqIDVal = payload.ID
+	}
+
+	if reqIDVal != nil {
+		switch v := reqIDVal.(type) {
+		case float64:
+			requestID = uint(v)
+		case uint:
+			requestID = v
+		case int:
+			requestID = uint(v)
+		case string:
+			if parsed, err := strconv.ParseUint(strings.TrimSpace(v), 10, 64); err == nil {
+				requestID = uint(parsed)
+			}
+		}
+	}
+
+	if requestID == 0 {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid or missing request_id",
+		})
+	}
+
+	err = c.friendService.RejectFriendRequest(requestID, userID)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Friend request rejected",
+	})
+}
+
+func (c *FriendController) RemoveFriend(ctx *fiber.Ctx) error {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	friendIDParam := ctx.Params("id")
+	friendID, err := strconv.ParseUint(friendIDParam, 10, 64)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid friend ID",
+		})
+	}
+
+	err = c.friendService.RemoveFriend(userID, uint(friendID))
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Friend removed successfully",
+	})
 }

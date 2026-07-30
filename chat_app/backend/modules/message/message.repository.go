@@ -49,7 +49,7 @@ func (r *messageRepository) GetChatHistoryPaginated(userAID, userBID uint, limit
 	var messages []models.Message
 	query := r.db.Preload("Sender").Preload("Receiver").
 		Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)", userAID, userBID, userBID, userAID)
-	
+
 	if beforeID > 0 {
 		query = query.Where("id < ?", beforeID)
 	}

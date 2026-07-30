@@ -14,7 +14,9 @@ type FriendRepository interface {
 	FindRequestByID(requestID uint) (*models.FriendRequest, error)
 	FindRequestBetweenUsers(userAID, userBID uint) (*models.FriendRequest, error)
 	AcceptRequest(requestID, userID uint) (*models.FriendRequest, error)
+	RejectRequest(requestID, userID uint) error
 	CreateFriendship(userAID, userBID uint) error
+	RemoveFriend(userID, friendID uint) error
 	AreFriends(userAID, userBID uint) (bool, error)
 	GetFriendsList(userID uint) ([]models.User, error)
 	UpdateLastReadMessageID(userID, friendID, messageID uint) error
@@ -95,6 +97,21 @@ func (r *friendRepository) AcceptRequest(requestID, userID uint) (*models.Friend
 	return req, nil
 }
 
+func (r *friendRepository) RejectRequest(requestID, userID uint) error {
+	req, err := r.FindRequestByID(requestID)
+	if err != nil {
+		return err
+	}
+	if req.ToUserID != userID && req.FromUserID != userID {
+		return errors.New("unauthorized to reject this request")
+	}
+	if req.Status != "pending" {
+		return errors.New("request is not pending")
+	}
+
+	return r.db.Model(req).Update("status", "rejected").Error
+}
+
 func (r *friendRepository) CreateFriendship(userAID, userBID uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var f1 models.Friendship
@@ -115,6 +132,23 @@ func (r *friendRepository) CreateFriendship(userAID, userBID uint) error {
 	})
 }
 
+func (r *friendRepository) RemoveFriend(userID, friendID uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ? AND friend_id = ?", userID, friendID).Delete(&models.Friendship{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ? AND friend_id = ?", friendID, userID).Delete(&models.Friendship{}).Error; err != nil {
+			return err
+		}
+		// Also delete any accepted friend requests between them
+		if err := tx.Where("(from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
+			userID, friendID, friendID, userID).Delete(&models.FriendRequest{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (r *friendRepository) AreFriends(userAID, userBID uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.Friendship{}).
@@ -127,15 +161,12 @@ func (r *friendRepository) AreFriends(userAID, userBID uint) (bool, error) {
 }
 
 func (r *friendRepository) GetFriendsList(userID uint) ([]models.User, error) {
-	var friendships []models.Friendship
-	err := r.db.Preload("Friend").Where("user_id = ?", userID).Find(&friendships).Error
+	var friends []models.User
+	err := r.db.Joins("JOIN friendships ON friendships.friend_id = users.id").
+		Where("friendships.user_id = ?", userID).
+		Find(&friends).Error
 	if err != nil {
 		return nil, err
-	}
-
-	friends := make([]models.User, 0, len(friendships))
-	for _, f := range friendships {
-		friends = append(friends, f.Friend)
 	}
 
 	return friends, nil

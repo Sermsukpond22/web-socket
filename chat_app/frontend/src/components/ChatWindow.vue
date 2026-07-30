@@ -1,25 +1,25 @@
 <template>
-  <div class="w-full h-full flex flex-col bg-white">
+  <div class="w-full h-full flex flex-col bg-white dark:bg-gray-900">
     <!-- EMPTY STATE WHEN NO FRIEND SELECTED -->
-    <div v-if="!selectedFriend" class="h-full flex flex-col items-center justify-center p-8 text-center bg-gray-50">
-      <div class="w-24 h-24 rounded-full border-2 border-gray-900 flex items-center justify-center text-gray-900 mb-4 shadow-sm">
+    <div v-if="!selectedFriend" class="h-full flex flex-col items-center justify-center p-8 text-center bg-gray-50 dark:bg-gray-800">
+      <div class="w-24 h-24 rounded-full border-2 border-gray-900 flex items-center justify-center text-gray-900 dark:text-gray-100 mb-4 shadow-sm">
         <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
       </div>
-      <h2 class="text-xl font-light text-gray-900 mb-1">ข้อความของคุณ</h2>
-      <p class="text-sm text-gray-500 max-w-xs mb-6">ส่งข้อความและแชทกับเพื่อนของคุณแบบเรียลไทม์</p>
+      <h2 class="text-xl font-light text-gray-900 dark:text-gray-100 mb-1">ข้อความของคุณ</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400 max-w-xs mb-6">ส่งข้อความและแชทกับเพื่อนของคุณแบบเรียลไทม์</p>
     </div>
 
     <!-- ACTIVE CHAT WINDOW -->
     <div v-else class="h-full flex flex-col">
       <!-- Chat Header -->
-      <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-white z-10">
+      <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-white dark:bg-gray-900 z-10">
         <div class="flex items-center space-x-3">
           <!-- Mobile Back Button -->
           <button 
             @click="$emit('back')"
-            class="md:hidden text-gray-600 hover:text-gray-900 p-1.5 rounded-full hover:bg-gray-100 transition mr-1"
+            class="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white dark:text-gray-100 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 dark:bg-gray-800 transition mr-1"
             title="กลับไปหน้าแชท"
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -28,16 +28,17 @@
           </button>
 
           <!-- Friend Avatar -->
-          <div class="relative">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
-              {{ getInitial(selectedFriend.username || selectedFriend.email) }}
+          <div class="relative cursor-pointer" @click="openFriendProfile">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
+              <img v-if="selectedFriend.avatar_url" :src="getFullUrl(selectedFriend.avatar_url)" class="w-full h-full object-cover" />
+              <span v-else>{{ getInitial(selectedFriend.username || selectedFriend.email) }}</span>
             </div>
-            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white bg-green-500"></span>
+            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" :class="friendStatus.is_online ? 'bg-green-500' : 'bg-gray-400'"></span>
           </div>
 
           <!-- Friend Info -->
           <div>
-            <h3 class="font-semibold text-sm text-gray-900 leading-tight">
+            <h3 class="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
               {{ selectedFriend.username || selectedFriend.email }}
             </h3>
             <p v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="text-xs text-sky-500 font-medium animate-pulse">กำลังพิมพ์...</p>
@@ -51,7 +52,7 @@
       <!-- Messages Thread -->
       <div 
         ref="messagesContainer" 
-        class="flex-1 overflow-y-auto p-4 space-y-3 bg-white"
+        class="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-gray-900"
         @scroll="handleScroll"
       >
         <div v-if="loadingMore" class="flex justify-center my-2 text-sky-500">
@@ -79,8 +80,8 @@
             <div
               :class="[
                 'px-4 py-2 text-sm rounded-2xl break-words shadow-sm',
-                msg.is_deleted ? 'bg-gray-100 text-gray-400 italic border border-gray-200' :
-                isSelf(msg) ? 'bg-sky-500 text-white rounded-br-sm' : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                msg.is_deleted ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 italic border border-gray-200' :
+                isSelf(msg) ? 'bg-sky-500 text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm'
               ]"
             >
               <template v-if="msg.is_deleted">
@@ -89,12 +90,12 @@
               <template v-else>
                 <!-- Image -->
                 <div v-if="msg.type === 'image' && msg.file_url">
-                  <img :src="'http://localhost:3000' + msg.file_url" alt="image" class="rounded-lg max-w-full h-auto cursor-pointer object-cover mb-1" />
+                  <img :src="apiUrl + msg.file_url" alt="image" class="rounded-lg max-w-full h-auto cursor-pointer object-cover mb-1" />
                 </div>
                 <!-- File -->
                 <div v-else-if="msg.type === 'file' && msg.file_url" class="flex items-center space-x-2 bg-black/10 p-2 rounded-lg mb-1">
                   <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-                  <a :href="'http://localhost:3000' + msg.file_url" target="_blank" class="underline text-sm font-semibold truncate">{{ msg.content || 'ไฟล์แนบ' }}</a>
+                  <a :href="apiUrl + msg.file_url" target="_blank" class="underline text-sm font-semibold truncate">{{ msg.content || 'ไฟล์แนบ' }}</a>
                 </div>
                 <!-- Text / Fallback -->
                 <div v-if="msg.content && msg.type !== 'file'">
@@ -105,10 +106,10 @@
             
             <!-- Actions (Edit/Delete) -->
             <div v-if="isSelf(msg) && !msg.is_deleted && msg.id && !msg.pending" class="opacity-0 group-hover:opacity-100 transition flex flex-col space-y-1 mt-1">
-              <button @click="startEdit(msg)" class="text-gray-400 hover:text-sky-500 p-1 bg-gray-50 rounded-full" title="แก้ไข">
+              <button @click="startEdit(msg)" class="text-gray-400 hover:text-sky-500 p-1 bg-gray-50 dark:bg-gray-800 rounded-full" title="แก้ไข">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
               </button>
-              <button @click="confirmDelete(msg)" class="text-gray-400 hover:text-red-500 p-1 bg-gray-50 rounded-full" title="ลบ">
+              <button @click="confirmDelete(msg)" class="text-gray-400 hover:text-red-500 p-1 bg-gray-50 dark:bg-gray-800 rounded-full" title="ลบ">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
               </button>
             </div>
@@ -129,7 +130,7 @@
 
         <!-- Typing Indicator -->
         <div v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="flex flex-col items-start mt-2 mb-2">
-          <div class="px-4 py-3 bg-gray-100 rounded-2xl rounded-bl-sm w-[72px] shadow-sm">
+          <div class="px-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm w-[72px] shadow-sm">
             <div class="flex space-x-1.5 items-center justify-center h-full">
               <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
               <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
@@ -140,35 +141,40 @@
       </div>
 
       <!-- Input Area -->
-      <div class="p-3 border-t border-gray-200 bg-white w-full">
-        <div v-if="editingMsg" class="flex items-center justify-between bg-sky-50 p-2 rounded-t-lg border border-sky-100 border-b-0">
+      <div class="p-3 border-t border-gray-200 bg-white dark:bg-gray-900 w-full">
+        <div v-if="editingMsg" class="flex items-center justify-between bg-sky-50 dark:bg-sky-900/30 p-2 rounded-t-lg border border-sky-100 border-b-0">
           <div class="text-xs text-sky-700 flex flex-col">
             <span class="font-bold">แก้ไขข้อความ</span>
             <span class="truncate max-w-[200px] md:max-w-md">{{ editingMsg.content }}</span>
           </div>
-          <button @click="cancelEdit" class="text-gray-500 hover:text-gray-700 p-1">
+          <button @click="cancelEdit" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 p-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
         <form @submit.prevent="handleSend" class="flex items-end space-x-2 w-full">
           <input type="file" ref="fileInput" @change="handleFileUpload" class="hidden" accept="image/*,.pdf,.doc,.docx,.zip,.rar" />
-          <button
-            type="button"
-            @click="triggerFileInput"
-            class="p-2.5 text-gray-400 hover:text-sky-500 hover:bg-sky-50 rounded-full transition flex-shrink-0"
-            title="แนบไฟล์"
-            :disabled="isUploading"
-          >
-            <svg v-if="!isUploading" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-            <div v-else class="animate-spin w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full"></div>
-          </button>
+          <div class="relative flex-shrink-0">
+            <button
+              type="button"
+              @click="showEmojiPicker = !showEmojiPicker"
+              class="p-2.5 text-gray-400 hover:text-sky-500 hover:bg-sky-50 dark:bg-sky-900/30 rounded-full transition"
+              title="อีโมจิ"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </button>
+            <div v-if="showEmojiPicker" class="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-900 border border-gray-200 rounded-lg shadow-lg p-2 flex flex-wrap w-48 z-50">
+              <span v-for="emoji in emojis" :key="emoji" @click="insertEmoji(emoji)" class="cursor-pointer p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 dark:bg-gray-800 rounded text-xl">
+                {{ emoji }}
+              </span>
+            </div>
+          </div>
 
           <textarea
             v-model="inputMessage"
             @input="handleTyping"
             :placeholder="editingMsg ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ...'"
             rows="1"
-            class="flex-1 px-4 py-2.5 bg-gray-100 rounded-2xl text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:bg-gray-50 focus:ring-1 focus:ring-sky-500 border border-transparent focus:border-sky-500 transition resize-none overflow-hidden min-h-[44px] max-h-[120px]"
+            class="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 rounded-2xl text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:bg-gray-50 dark:bg-gray-800 focus:ring-1 focus:ring-sky-500 border border-transparent focus:border-sky-500 transition resize-none overflow-hidden min-h-[44px] max-h-[120px]"
             @keydown.enter.exact.prevent="handleSend"
           ></textarea>
 
@@ -183,6 +189,13 @@
       </div>
     </div>
   </div>
+  
+  <ProfileModal 
+    :is-open="isProfileOpen" 
+    :user="selectedProfileUser" 
+    :is-own-profile="false"
+    @close="isProfileOpen = false" 
+  />
 </template>
 
 <script setup>
@@ -190,8 +203,11 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useFriendsStore } from '../stores/friends'
 import { useChatStore } from '../stores/chat'
+import ProfileModal from './ProfileModal.vue'
 
 import Swal from 'sweetalert2'
+
+const apiUrl = import.meta.env.VITE_API_URL || ''
 
 const emit = defineEmits(['back'])
 
@@ -206,7 +222,34 @@ const allLoaded = ref(false)
 const fileInput = ref(null)
 const isUploading = ref(false)
 const editingMsg = ref(null)
+const showEmojiPicker = ref(false)
+const emojis = ['😀','😂','🥰','😎','😭','😡','👍','🙏','❤️','🔥','✨','🎉']
 let typingThrottleTimer = null
+
+// Profile State
+const isProfileOpen = ref(false)
+const selectedProfileUser = ref({})
+
+function getFullUrl(url) {
+  if (!url) return ''
+  if (url.startsWith('http')) return url
+  return `${import.meta.env.VITE_API_URL}${url}`
+}
+
+async function openFriendProfile() {
+  if (!chatStore.selectedFriendId) return
+  try {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/users/${chatStore.selectedFriendId}/profile`, {
+      headers: { 'Authorization': `Bearer ${authStore.token}` }
+    })
+    if (res.ok) {
+      selectedProfileUser.value = await res.json()
+      isProfileOpen.value = true
+    }
+  } catch (err) {
+    console.error('Failed to fetch profile', err)
+  }
+}
 
 const selectedFriend = computed(() => {
   if (!chatStore.selectedFriendId) return null
@@ -298,6 +341,11 @@ function handleTyping() {
       typingThrottleTimer = null
     }, 2000)
   }
+}
+
+function insertEmoji(emoji) {
+  inputMessage.value += emoji
+  showEmojiPicker.value = false
 }
 
 function triggerFileInput() {

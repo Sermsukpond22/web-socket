@@ -1,9 +1,14 @@
 package message
 
 import (
-	"strconv"
-	"time"
 	"chat_app/backend/models"
+	"chat_app/backend/utils"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -19,18 +24,8 @@ func NewMessageController(messageService MessageService) *MessageController {
 }
 
 func (c *MessageController) GetChatHistory(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	var userID uint
-	switch v := userIDVal.(type) {
-	case float64:
-		userID = uint(v)
-	case uint:
-		userID = v
-	case int:
-		userID = uint(v)
-	}
-
-	if userID == 0 {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized access",
 		})
@@ -74,18 +69,8 @@ func (c *MessageController) GetChatHistory(ctx *fiber.Ctx) error {
 }
 
 func (c *MessageController) ReadMessages(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	var userID uint
-	switch v := userIDVal.(type) {
-	case float64:
-		userID = uint(v)
-	case uint:
-		userID = v
-	case int:
-		userID = uint(v)
-	}
-
-	if userID == 0 {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized access",
 		})
@@ -110,18 +95,8 @@ func (c *MessageController) ReadMessages(ctx *fiber.Ctx) error {
 }
 
 func (c *MessageController) GetUnreadCounts(ctx *fiber.Ctx) error {
-	userIDVal := ctx.Locals("user_id")
-	var userID uint
-	switch v := userIDVal.(type) {
-	case float64:
-		userID = uint(v)
-	case uint:
-		userID = v
-	case int:
-		userID = uint(v)
-	}
-
-	if userID == 0 {
+	userID, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized access",
 		})
@@ -143,9 +118,28 @@ func (c *MessageController) UploadFile(ctx *fiber.Ctx) error {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "File is required"})
 	}
 
-	// create uploads directory if not exists
-	// the file will be saved to ./uploads/timestamp_filename
-	filename := strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + file.Filename
+	// Max size 5MB
+	if file.Size > 5*1024*1024 {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "File size exceeds 5MB limit"})
+	}
+
+	// Validate MIME type
+	mimeType := file.Header.Get("Content-Type")
+	if mimeType != "image/jpeg" && mimeType != "image/png" && mimeType != "image/gif" && mimeType != "application/pdf" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file type"})
+	}
+
+	// Sanitize filename
+	ext := filepath.Ext(file.Filename)
+	safeFilename := strings.ReplaceAll(strings.ToLower(filepath.Base(file.Filename[:len(file.Filename)-len(ext)])), " ", "_")
+	reg := regexp.MustCompile("[^a-zA-Z0-9_]+")
+	safeFilename = reg.ReplaceAllString(safeFilename, "")
+	if safeFilename == "" {
+		safeFilename = "file"
+	}
+
+	filename := strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + safeFilename + ext
+	os.MkdirAll("./uploads", os.ModePerm)
 	err = ctx.SaveFile(file, "./uploads/"+filename)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})

@@ -15,5 +15,7 @@ func SetupFriendRoutes(app *fiber.App, friendController *FriendController, authS
 	friends.Post("/request", friendController.SendRequest)
 	friends.Get("/pending", friendController.GetPendingRequests)
 	friends.Post("/accept", friendController.AcceptRequest)
+	friends.Delete("/reject", friendController.RejectRequest)
 	friends.Get("/", friendController.GetFriends)
+	friends.Delete("/:id", friendController.RemoveFriend)
 }

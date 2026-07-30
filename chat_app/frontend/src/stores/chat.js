@@ -93,6 +93,12 @@ export const useChatStore = defineStore('chat', () => {
 
   async function fetchMessages(friendId, beforeId = 0) {
     if (!friendId) return
+    
+    // Use cached messages if available for initial load
+    if (beforeId === 0 && messages.value[friendId] && messages.value[friendId].length > 0) {
+      return
+    }
+
     loading.value = true
     error.value = null
     try {
@@ -227,23 +233,36 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  let reconnectAttempts = 0
+  let reconnectTimer = null
+
   function connectWebSocket(token) {
     if (!token || (ws.value && (ws.value.readyState === WebSocket.OPEN || ws.value.readyState === WebSocket.CONNECTING))) {
       return
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    let host = window.location.host
-    if (host.includes(':5173')) {
-      host = host.replace(':5173', ':3000')
+    // Use environment variable if available, otherwise construct from current host
+    let wsUrl = import.meta.env.VITE_WS_URL 
+    if (!wsUrl) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      let host = window.location.host
+      if (host.includes(':5173')) {
+        host = host.replace(':5173', ':3000')
+      }
+      wsUrl = `${protocol}//${host}`
     }
-    const wsUrl = `${protocol}//${host}/ws?token=${encodeURIComponent(token)}`
+    wsUrl = `${wsUrl}/ws?token=${encodeURIComponent(token)}`
 
     try {
       const socket = new WebSocket(wsUrl)
 
       socket.onopen = () => {
         isConnected.value = true
+        reconnectAttempts = 0
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer)
+          reconnectTimer = null
+        }
         console.log('[WS] Connected to', wsUrl)
       }
 
@@ -261,8 +280,15 @@ export const useChatStore = defineStore('chat', () => {
             }
             appendMessage(data)
 
-            if (data.sender_id !== authStore.user?.id && data.sender_id !== selectedFriendId.value) {
-              unreadCounts.value[data.sender_id] = (unreadCounts.value[data.sender_id] || 0) + 1
+            if (data.sender_id !== authStore.user?.id) {
+              if (data.sender_id !== selectedFriendId.value) {
+                unreadCounts.value[data.sender_id] = (unreadCounts.value[data.sender_id] || 0) + 1
+              }
+              // Play notification sound
+              try {
+                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
+                audio.play().catch(() => {})
+              } catch(e) {}
             }
           } else if (data.type === 'typing') {
             handleIncomingTyping(data)
@@ -315,6 +341,15 @@ export const useChatStore = defineStore('chat', () => {
       socket.onclose = () => {
         isConnected.value = false
         console.log('[WS] Disconnected')
+        
+        // Exponential backoff for reconnect
+        const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
+        reconnectAttempts++
+        console.log(`[WS] Reconnecting in ${backoffMs}ms... (Attempt ${reconnectAttempts})`)
+        reconnectTimer = setTimeout(() => {
+          if (authStore?.token) connectWebSocket(authStore.token)
+          else connectWebSocket(token)
+        }, backoffMs)
       }
 
       socket.onerror = (err) => {
@@ -329,6 +364,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function disconnectWebSocket() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     if (ws.value) {
       ws.value.close()
       ws.value = null
