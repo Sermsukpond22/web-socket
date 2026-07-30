@@ -2,6 +2,7 @@ package user
 
 import (
 	"strings"
+	"time"
 
 	"chat_app/backend/models"
 
@@ -14,6 +15,7 @@ type UserRepository interface {
 	FindByID(id uint) (*models.User, error)
 	FindByUsername(username string) (*models.User, error)
 	SearchUsers(query string, excludeUserID uint) ([]models.User, error)
+	UpdateLastSeen(userID uint, lastSeen *time.Time) error
 }
 
 type userRepository struct {
@@ -67,4 +69,8 @@ func (r *userRepository) SearchUsers(query string, excludeUserID uint) ([]models
 		return nil, err
 	}
 	return users, nil
+}
+
+func (r *userRepository) UpdateLastSeen(userID uint, lastSeen *time.Time) error {
+	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("last_seen", lastSeen).Error
 }

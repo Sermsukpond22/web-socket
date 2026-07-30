@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"chat_app/backend/models"
+	"chat_app/backend/modules/user"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -12,9 +13,12 @@ import (
 
 type WSIncomingMessage struct {
 	Type        string `json:"type"`
+	ID          uint   `json:"id,omitempty"`
 	ReceiverID  uint   `json:"receiver_id"`
 	RecipientID uint   `json:"recipient_id"`
 	Content     string `json:"content"`
+	MsgType     string `json:"msg_type,omitempty"`
+	FileURL     string `json:"file_url,omitempty"`
 	IsTyping    *bool  `json:"is_typing,omitempty"`
 }
 
@@ -24,6 +28,10 @@ type WSChatEvent struct {
 	SenderID   uint      `json:"sender_id"`
 	ReceiverID uint      `json:"receiver_id"`
 	Content    string    `json:"content"`
+	MsgType    string    `json:"msg_type,omitempty"`
+	FileURL    string    `json:"file_url,omitempty"`
+	IsDeleted  bool      `json:"is_deleted,omitempty"`
+	IsEdited   bool      `json:"is_edited,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -33,24 +41,30 @@ type WSErrorEvent struct {
 }
 
 type MessageService interface {
-	SendMessage(senderID, receiverID uint, content string) (*models.Message, error)
+	SendMessage(senderID, receiverID uint, content, msgType, fileURL string) (*models.Message, error)
+	MarkMessagesAsRead(senderID, receiverID uint) error
+	EditMessage(userID, msgID uint, content string) (*models.Message, error)
+	DeleteMessage(userID, msgID uint) error
 }
 
 type FriendService interface {
-	AreFriends(userID1, userID2 uint) (bool, error)
+	AreFriends(userAID, userBID uint) (bool, error)
+	GetFriends(userID uint) ([]models.User, error)
 }
 
 type WSHandler struct {
 	hub            *Hub
 	messageService MessageService
 	friendService  FriendService
+	userRepo       user.UserRepository
 }
 
-func NewWSHandler(hub *Hub, messageService MessageService, friendService FriendService) *WSHandler {
+func NewWSHandler(hub *Hub, messageService MessageService, friendService FriendService, userRepo user.UserRepository) *WSHandler {
 	return &WSHandler{
 		hub:            hub,
 		messageService: messageService,
 		friendService:  friendService,
+		userRepo:       userRepo,
 	}
 }
 
@@ -77,7 +91,20 @@ func (h *WSHandler) HandleConnection(c *websocket.Conn) {
 
 	client := NewClient(userID, c, h.hub)
 	h.hub.Register(client)
-	defer h.hub.Unregister(client)
+	
+	// Update last_seen to null (online)
+	h.userRepo.UpdateLastSeen(userID, nil)
+	// Broadcast user online status
+	h.broadcastUserStatus(userID, true, nil)
+
+	defer func() {
+		h.hub.Unregister(client)
+		// Update last_seen to now (offline)
+		now := time.Now()
+		h.userRepo.UpdateLastSeen(userID, &now)
+		// Broadcast user offline status
+		h.broadcastUserStatus(userID, false, &now)
+	}()
 
 	log.Printf("[WS] Client connected: user_id=%d", userID)
 
@@ -130,7 +157,7 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			"is_typing": isTyping,
 		})
 	case "chat":
-		savedMsg, err := h.messageService.SendMessage(client.UserID, incoming.ReceiverID, incoming.Content)
+		savedMsg, err := h.messageService.SendMessage(client.UserID, incoming.ReceiverID, incoming.Content, incoming.MsgType, incoming.FileURL)
 		if err != nil {
 			_ = client.WriteJSON(WSErrorEvent{
 				Type:    "error",
@@ -145,6 +172,8 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			SenderID:   savedMsg.SenderID,
 			ReceiverID: savedMsg.ReceiverID,
 			Content:    savedMsg.Content,
+			MsgType:    savedMsg.Type,
+			FileURL:    savedMsg.FileURL,
 			CreatedAt:  savedMsg.CreatedAt,
 		}
 
@@ -155,10 +184,85 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 		if savedMsg.ReceiverID != client.UserID {
 			h.hub.SendToUser(savedMsg.ReceiverID, chatEvent)
 		}
+	case "read":
+		senderID := incoming.ReceiverID // The sender of the messages that are now read
+		if senderID == 0 || senderID == client.UserID {
+			return
+		}
+
+		err := h.messageService.MarkMessagesAsRead(senderID, client.UserID)
+		if err != nil {
+			return
+		}
+
+		// Notify the original sender that their messages were read
+		h.hub.SendToUser(senderID, fiber.Map{
+			"type":      "read_receipt",
+			"reader_id": client.UserID,
+		})
+
+	case "edit_message":
+		msgID := incoming.ID
+		editedMsg, err := h.messageService.EditMessage(client.UserID, msgID, incoming.Content)
+		if err != nil {
+			_ = client.WriteJSON(WSErrorEvent{Type: "error", Message: err.Error()})
+			return
+		}
+		
+		editEvent := WSChatEvent{
+			Type:       "message_edited",
+			ID:         editedMsg.ID,
+			SenderID:   editedMsg.SenderID,
+			ReceiverID: editedMsg.ReceiverID,
+			Content:    editedMsg.Content,
+			MsgType:    editedMsg.Type,
+			FileURL:    editedMsg.FileURL,
+			IsEdited:   editedMsg.IsEdited,
+			IsDeleted:  editedMsg.IsDeleted,
+			CreatedAt:  editedMsg.CreatedAt,
+		}
+		_ = client.WriteJSON(editEvent)
+		h.hub.SendToUser(editedMsg.ReceiverID, editEvent)
+
+	case "delete_message":
+		msgID := incoming.ID
+		err := h.messageService.DeleteMessage(client.UserID, msgID)
+		if err != nil {
+			_ = client.WriteJSON(WSErrorEvent{Type: "error", Message: err.Error()})
+			return
+		}
+		
+		deleteEvent := fiber.Map{
+			"type": "message_deleted",
+			"id": msgID,
+		}
+		_ = client.WriteJSON(deleteEvent)
+		// To find the receiver, we should ideally fetch the message before deleting.
+		// Since we deleted it (soft delete), we can just broadcast to receiver if we had it.
+		// For now we can require the client to pass receiver_id in incoming message.
+		if incoming.ReceiverID > 0 {
+			h.hub.SendToUser(incoming.ReceiverID, deleteEvent)
+		}
+
 	default:
 		_ = client.WriteJSON(WSErrorEvent{
 			Type:    "error",
 			Message: "Unknown message type",
 		})
+	}
+}
+
+func (h *WSHandler) broadcastUserStatus(userID uint, isOnline bool, lastSeen *time.Time) {
+	friends, err := h.friendService.GetFriends(userID)
+	if err == nil {
+		event := fiber.Map{
+			"type":      "user_status",
+			"user_id":   userID,
+			"is_online": isOnline,
+			"last_seen": lastSeen,
+		}
+		for _, f := range friends {
+			h.hub.SendToUser(f.ID, event)
+		}
 	}
 }

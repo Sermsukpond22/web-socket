@@ -8,7 +8,13 @@ type Message struct {
 	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
 	SenderID   uint      `gorm:"not null;index:idx_sender_receiver;index:idx_sender" json:"sender_id"`
 	ReceiverID uint      `gorm:"not null;index:idx_sender_receiver;index:idx_receiver" json:"receiver_id"`
-	Content    string    `gorm:"type:text;not null" json:"content"`
+	Content    string     `gorm:"type:text;not null" json:"content"`
+	Type       string     `gorm:"type:varchar(20);default:'text'" json:"type"` // "text", "image", "file"
+	FileURL    string     `gorm:"type:varchar(500)" json:"file_url,omitempty"`
+	IsDeleted  bool       `gorm:"default:false" json:"is_deleted"`
+	IsEdited   bool       `gorm:"default:false" json:"is_edited"`
+	IsRead     bool       `gorm:"default:false;index:idx_is_read" json:"is_read"`
+	ReadAt     *time.Time `json:"read_at,omitempty"`
 	CreatedAt  time.Time `gorm:"index:idx_created_at" json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 

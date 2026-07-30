@@ -18,11 +18,11 @@ func (c *AuthController) Register(ctx *fiber.Ctx) error {
 	var input RegisterInput
 	if err := ctx.BodyParser(&input); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request payload",
+			"error": "ข้อมูลไม่ถูกต้อง",
 		})
 	}
 
-	user, token, err := c.authService.Register(input)
+	user, err := c.authService.Register(input)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
@@ -30,8 +30,8 @@ func (c *AuthController) Register(ctx *fiber.Ctx) error {
 	}
 
 	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"token": token,
-		"user":  user,
+		"user":    user,
+		"message": "สมัครสมาชิกสำเร็จ",
 	})
 }
 

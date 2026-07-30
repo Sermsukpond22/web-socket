@@ -52,7 +52,7 @@ func main() {
 	messageService := message.NewMessageService(messageRepo, friendRepo)
 
 	wsHub := wsPkg.NewHub()
-	wsHandler := wsPkg.NewWSHandler(wsHub, messageService, friendService)
+	wsHandler := wsPkg.NewWSHandler(wsHub, messageService, friendService, userRepo)
 
 	authController := auth.NewAuthController(authService)
 	friendController := friend.NewFriendController(friendService, wsHub)
@@ -71,6 +71,10 @@ func main() {
 		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
 		AllowCredentials: true,
 	}))
+
+	// Serve Static Files for Uploads
+	os.MkdirAll("./uploads", os.ModePerm)
+	app.Static("/uploads", "./uploads")
 
 	// Setup Routes
 	auth.SetupAuthRoutes(app, authController, authService)

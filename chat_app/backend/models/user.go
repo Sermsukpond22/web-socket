@@ -5,10 +5,13 @@ import (
 )
 
 type User struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Username  string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"username"`
-	Email     string    `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	Password  string    `gorm:"type:varchar(255);not null" json:"-"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	Username    string     `gorm:"type:varchar(100);uniqueIndex;not null" json:"username"`
+	Email       string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	Password    string     `gorm:"type:varchar(255);not null" json:"-"`
+	DisplayName string     `gorm:"type:varchar(100)" json:"display_name"`
+	Bio         string     `gorm:"type:text" json:"bio"`
+	LastSeen    *time.Time `json:"last_seen"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }

@@ -16,10 +16,11 @@ type FriendRequest struct {
 }
 
 type Friendship struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID    uint      `gorm:"not null;index:idx_user_friend,unique;index:idx_user" json:"user_id"`
-	FriendID  uint      `gorm:"not null;index:idx_user_friend,unique;index:idx_friend" json:"friend_id"`
-	User      User      `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
-	Friend    User      `gorm:"foreignKey:FriendID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"friend,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID            uint      `gorm:"not null;index:idx_user_friend,unique;index:idx_user" json:"user_id"`
+	FriendID          uint      `gorm:"not null;index:idx_user_friend,unique;index:idx_friend" json:"friend_id"`
+	LastReadMessageID uint      `json:"last_read_message_id"`
+	User              User      `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+	Friend            User      `gorm:"foreignKey:FriendID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"friend,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }

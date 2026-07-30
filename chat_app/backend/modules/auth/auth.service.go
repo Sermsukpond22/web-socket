@@ -14,9 +14,11 @@ import (
 )
 
 type RegisterInput struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
+	Bio         string `json:"bio"`
 }
 
 type LoginInput struct {
@@ -25,7 +27,7 @@ type LoginInput struct {
 }
 
 type AuthService interface {
-	Register(input RegisterInput) (*models.User, string, error)
+	Register(input RegisterInput) (*models.User, error)
 	Login(input LoginInput) (*models.User, string, error)
 	GetUserByID(id uint) (*models.User, error)
 	GenerateToken(user *models.User) (string, error)
@@ -47,53 +49,58 @@ func NewAuthService(userRepo user.UserRepository, jwtSecret string) AuthService 
 	}
 }
 
-func (s *authService) Register(input RegisterInput) (*models.User, string, error) {
+func (s *authService) Register(input RegisterInput) (*models.User, error) {
 	input.Username = strings.TrimSpace(input.Username)
 	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
+	input.DisplayName = strings.TrimSpace(input.DisplayName)
+	input.Bio = strings.TrimSpace(input.Bio)
 
 	if input.Username == "" {
-		return nil, "", errors.New("username is required")
+		return nil, errors.New("กรุณากรอกชื่อผู้ใช้ (Username)")
 	}
 	if input.Email == "" {
-		return nil, "", errors.New("email is required")
+		return nil, errors.New("กรุณากรอกอีเมล")
+	}
+	if !strings.Contains(input.Email, "@") {
+		return nil, errors.New("รูปแบบอีเมลไม่ถูกต้อง")
 	}
 	if len(input.Password) < 6 {
-		return nil, "", errors.New("password must be at least 6 characters long")
+		return nil, errors.New("รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร")
+	}
+	if input.DisplayName == "" {
+		return nil, errors.New("กรุณากรอกชื่อแสดงผล (Display Name)")
 	}
 
 	// Check existing email
 	existingEmailUser, err := s.userRepo.FindByEmail(input.Email)
 	if err == nil && existingEmailUser != nil {
-		return nil, "", errors.New("email is already registered")
+		return nil, errors.New("อีเมลนี้ถูกใช้งานแล้ว")
 	}
 
 	// Check existing username
 	existingUsernameUser, err := s.userRepo.FindByUsername(input.Username)
 	if err == nil && existingUsernameUser != nil {
-		return nil, "", errors.New("username is already taken")
+		return nil, errors.New("ชื่อผู้ใช้นี้ถูกใช้งานแล้ว")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to hash password: %w", err)
+		return nil, fmt.Errorf("เข้ารหัสผ่านไม่สำเร็จ: %w", err)
 	}
 
 	user := &models.User{
-		Username: input.Username,
-		Email:    input.Email,
-		Password: string(hashedPassword),
+		Username:    input.Username,
+		Email:       input.Email,
+		Password:    string(hashedPassword),
+		DisplayName: input.DisplayName,
+		Bio:         input.Bio,
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
-		return nil, "", fmt.Errorf("failed to create user: %w", err)
+		return nil, fmt.Errorf("ไม่สามารถสร้างบัญชีผู้ใช้ได้: %w", err)
 	}
 
-	token, err := s.GenerateToken(user)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate token: %w", err)
-	}
-
-	return user, token, nil
+	return user, nil
 }
 
 func (s *authService) Login(input LoginInput) (*models.User, string, error) {

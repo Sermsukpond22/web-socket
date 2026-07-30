@@ -236,6 +236,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useFriendsStore } from '../stores/friends'
 import { useChatStore } from '../stores/chat'
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -360,10 +361,22 @@ async function handleSendRequest() {
   }
 }
 
-function handleLogout() {
-  chatStore.disconnectWebSocket()
-  authStore.logout()
-  router.push('/login')
+async function handleLogout() {
+  const result = await Swal.fire({
+    title: 'คุณต้องการออกจากระบบใช่หรือไม่?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#0ea5e9',
+    cancelButtonColor: '#ef4444',
+    confirmButtonText: 'ออกจากระบบ',
+    cancelButtonText: 'ยกเลิก'
+  })
+
+  if (result.isConfirmed) {
+    chatStore.disconnectWebSocket()
+    authStore.logout()
+    router.push('/login')
+  }
 }
 
 onMounted(() => {

@@ -13,6 +13,7 @@ export const useChatStore = defineStore('chat', () => {
   const typingUsers = ref({})
   const typingTimers = {}
   const unreadCounts = ref({})
+  const userStatus = ref({}) // key: user_id, value: { is_online, last_seen }
 
   const activeMessages = computed(() => {
     if (!selectedFriendId.value) return []
@@ -70,27 +71,70 @@ export const useChatStore = defineStore('chat', () => {
   function selectFriend(friendId) {
     selectedFriendId.value = friendId
     if (friendId) {
-      unreadCounts.value[friendId] = 0
+      if (unreadCounts.value[friendId] > 0) {
+        unreadCounts.value[friendId] = 0
+        sendReadReceipt(friendId)
+      }
       fetchMessages(friendId)
     }
   }
 
-  async function fetchMessages(friendId) {
+  async function fetchUnreadCounts() {
+    try {
+      const response = await fetch('/api/messages/unread', { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        unreadCounts.value = data || {}
+      }
+    } catch (err) {
+      console.error('Failed to fetch unread counts', err)
+    }
+  }
+
+  async function fetchMessages(friendId, beforeId = 0) {
     if (!friendId) return
     loading.value = true
     error.value = null
     try {
-      const response = await fetch(`/api/messages/${friendId}`, {
+      const url = beforeId > 0 
+        ? `/api/messages/${friendId}?before_id=${beforeId}&limit=50`
+        : `/api/messages/${friendId}?limit=50`
+
+      const response = await fetch(url, {
         headers: getHeaders()
       })
       if (response.ok) {
         const data = await response.json()
-        messages.value[friendId] = Array.isArray(data) ? data : []
+        const newMessages = Array.isArray(data) ? data : []
+        
+        if (!messages.value[friendId]) {
+          messages.value[friendId] = []
+        }
+
+        if (beforeId > 0) {
+          // Prepend older messages
+          messages.value[friendId] = [...newMessages, ...messages.value[friendId]]
+        } else {
+          // First load
+          messages.value[friendId] = newMessages
+        }
       }
     } catch (err) {
       error.value = err.message
     } finally {
       loading.value = false
+    }
+  }
+
+  function sendReadReceipt(senderId) {
+    if (ws.value && ws.value.readyState === WebSocket.OPEN && senderId) {
+      ws.value.send(JSON.stringify({
+        type: 'read',
+        receiver_id: senderId // Here receiver_id means the original sender whose messages we read
+      }))
+    } else {
+      // Fallback to HTTP
+      fetch(`/api/messages/read/${senderId}`, { method: 'POST', headers: getHeaders() }).catch(() => {})
     }
   }
 
@@ -131,8 +175,8 @@ export const useChatStore = defineStore('chat', () => {
     list.push(msg)
   }
 
-  async function sendMessage(receiverId, content) {
-    if (!content || !content.trim()) return
+  async function sendMessage(receiverId, content, msgType = 'text', fileUrl = '') {
+    if ((!content || !content.trim()) && !fileUrl) return
     const authStore = useAuthStore()
     const trimmed = content.trim()
 
@@ -141,6 +185,8 @@ export const useChatStore = defineStore('chat', () => {
       sender_id: authStore.user?.id,
       receiver_id: receiverId,
       content: trimmed,
+      type: msgType,
+      file_url: fileUrl,
       created_at: new Date().toISOString(),
       pending: true
     }
@@ -153,7 +199,30 @@ export const useChatStore = defineStore('chat', () => {
       ws.value.send(JSON.stringify({
         type: 'chat',
         receiver_id: receiverId,
-        content: trimmed
+        content: trimmed,
+        msg_type: msgType,
+        file_url: fileUrl
+      }))
+    }
+  }
+
+  function editMessage(msgId, receiverId, newContent) {
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(JSON.stringify({
+        type: 'edit_message',
+        id: msgId,
+        receiver_id: receiverId,
+        content: newContent
+      }))
+    }
+  }
+
+  function deleteMessage(msgId, receiverId) {
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(JSON.stringify({
+        type: 'delete_message',
+        id: msgId,
+        receiver_id: receiverId
       }))
     }
   }
@@ -182,6 +251,7 @@ export const useChatStore = defineStore('chat', () => {
         try {
           const data = JSON.parse(event.data)
           const friendsStore = useFriendsStore()
+          const authStore = useAuthStore()
 
           if (data.type === 'chat') {
             if (data.sender_id && typingTimers[data.sender_id]) {
@@ -191,12 +261,43 @@ export const useChatStore = defineStore('chat', () => {
             }
             appendMessage(data)
 
-            const authStore = useAuthStore()
             if (data.sender_id !== authStore.user?.id && data.sender_id !== selectedFriendId.value) {
               unreadCounts.value[data.sender_id] = (unreadCounts.value[data.sender_id] || 0) + 1
             }
           } else if (data.type === 'typing') {
             handleIncomingTyping(data)
+          } else if (data.type === 'read_receipt') {
+            const readerId = data.reader_id
+            if (messages.value[readerId]) {
+              messages.value[readerId].forEach(m => {
+                if (m.sender_id === authStore.user?.id) {
+                  m.is_read = true
+                }
+              })
+            }
+          } else if (data.type === 'message_edited') {
+            const listId = data.sender_id === authStore.user?.id ? data.receiver_id : data.sender_id
+            if (messages.value[listId]) {
+              const msgIndex = messages.value[listId].findIndex(m => m.id === data.id)
+              if (msgIndex !== -1) {
+                messages.value[listId][msgIndex].content = data.content
+                messages.value[listId][msgIndex].is_edited = data.is_edited
+              }
+            }
+          } else if (data.type === 'message_deleted') {
+            // Find message and mark it deleted or remove it
+            // Need to search all lists since we might not know the exact friend id easily
+            Object.keys(messages.value).forEach(listId => {
+              const msgIndex = messages.value[listId].findIndex(m => m.id === data.id)
+              if (msgIndex !== -1) {
+                messages.value[listId][msgIndex].is_deleted = true
+              }
+            })
+          } else if (data.type === 'user_status') {
+            userStatus.value[data.user_id] = {
+              is_online: data.is_online,
+              last_seen: data.last_seen
+            }
           } else if (data.type === 'new_friend_request') {
             friendsStore.fetchPendingRequests()
           } else if (data.type === 'friend_request_accepted') {
@@ -254,7 +355,12 @@ export const useChatStore = defineStore('chat', () => {
     disconnectWebSocket,
     sendTyping,
     isUserTyping,
-    unreadCounts
+    unreadCounts,
+    fetchUnreadCounts,
+    sendReadReceipt,
+    editMessage,
+    deleteMessage,
+    userStatus
   }
 })
 

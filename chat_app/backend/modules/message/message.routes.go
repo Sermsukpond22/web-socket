@@ -13,7 +13,10 @@ func SetupMessageRoutes(app *fiber.App, msgController *MessageController, wsHand
 	// REST API Routes
 	api := app.Group("/api/messages")
 	api.Use(auth.JWTMiddleware(authService))
+	api.Get("/unread", msgController.GetUnreadCounts)
+	api.Post("/upload", msgController.UploadFile)
 	api.Get("/:friend_id", msgController.GetChatHistory)
+	api.Post("/read/:friend_id", msgController.ReadMessages)
 
 	// WebSocket Middleware for /ws
 	app.Use("/ws", func(c *fiber.Ctx) error {

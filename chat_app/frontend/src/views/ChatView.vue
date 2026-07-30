@@ -40,6 +40,7 @@ function handleBack() {
 
 onMounted(() => {
   if (authStore.token) {
+    chatStore.fetchUnreadCounts()
     chatStore.connectWebSocket(authStore.token)
   }
 })

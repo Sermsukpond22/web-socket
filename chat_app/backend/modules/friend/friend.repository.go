@@ -17,6 +17,7 @@ type FriendRepository interface {
 	CreateFriendship(userAID, userBID uint) error
 	AreFriends(userAID, userBID uint) (bool, error)
 	GetFriendsList(userID uint) ([]models.User, error)
+	UpdateLastReadMessageID(userID, friendID, messageID uint) error
 }
 
 type friendRepository struct {
@@ -138,4 +139,10 @@ func (r *friendRepository) GetFriendsList(userID uint) ([]models.User, error) {
 	}
 
 	return friends, nil
+}
+
+func (r *friendRepository) UpdateLastReadMessageID(userID, friendID, messageID uint) error {
+	return r.db.Model(&models.Friendship{}).
+		Where("user_id = ? AND friend_id = ?", userID, friendID).
+		Update("last_read_message_id", messageID).Error
 }

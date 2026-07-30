@@ -25,6 +25,7 @@ type FriendService interface {
 	GetFriends(userID uint) ([]models.User, error)
 	AreFriends(userAID, userBID uint) (bool, error)
 	SearchUsers(query string, excludeUserID uint) ([]models.User, error)
+	UpdateLastReadMessageID(userID, friendID, messageID uint) error
 }
 
 type friendService struct {
@@ -160,4 +161,8 @@ func (s *friendService) SearchUsers(query string, excludeUserID uint) ([]models.
 		return []models.User{}, nil
 	}
 	return s.userRepo.SearchUsers(query, excludeUserID)
+}
+
+func (s *friendService) UpdateLastReadMessageID(userID, friendID, messageID uint) error {
+	return s.friendRepo.UpdateLastReadMessageID(userID, friendID, messageID)
 }

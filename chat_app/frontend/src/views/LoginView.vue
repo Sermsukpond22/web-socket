@@ -73,6 +73,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -85,6 +86,15 @@ async function handleLogin() {
   errorMessage.value = ''
   try {
     await authStore.login(email.value, password.value)
+    
+    await Swal.fire({
+      icon: 'success',
+      title: 'เข้าสู่ระบบสำเร็จ!',
+      text: 'ยินดีต้อนรับกลับมา',
+      timer: 1500,
+      showConfirmButton: false
+    })
+
     router.push('/')
   } catch (err) {
     errorMessage.value = err.message || 'เข้าสู่ระบบไม่สำเร็จ โปรดตรวจสอบอีเมลหรือรหัสผ่าน'

@@ -26,7 +26,19 @@
             v-model="username"
             type="text"
             required
-            placeholder="ชื่อผู้ใช้"
+            placeholder="ชื่อผู้ใช้ (Username)"
+            class="w-full px-3 py-2.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 placeholder-gray-400"
+          />
+        </div>
+
+        <div>
+          <label for="displayName" class="sr-only">Display Name</label>
+          <input
+            id="displayName"
+            v-model="displayName"
+            type="text"
+            required
+            placeholder="ชื่อแสดงผล (Display Name)"
             class="w-full px-3 py-2.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 placeholder-gray-400"
           />
         </div>
@@ -50,9 +62,20 @@
             v-model="password"
             type="password"
             required
-            placeholder="รหัสผ่าน"
+            placeholder="รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)"
             class="w-full px-3 py-2.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 placeholder-gray-400"
           />
+        </div>
+
+        <div>
+          <label for="bio" class="sr-only">Bio (Optional)</label>
+          <textarea
+            id="bio"
+            v-model="bio"
+            placeholder="คำแนะนำตัวสั้นๆ (ไม่บังคับ)"
+            rows="2"
+            class="w-full px-3 py-2.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 placeholder-gray-400 resize-none"
+          ></textarea>
         </div>
 
         <button
@@ -85,6 +108,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import Swal from 'sweetalert2'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -92,13 +116,35 @@ const authStore = useAuthStore()
 const username = ref('')
 const email = ref('')
 const password = ref('')
+const displayName = ref('')
+const bio = ref('')
 const errorMessage = ref('')
 
 async function handleRegister() {
   errorMessage.value = ''
+  
+  // Frontend Validation
+  if (!username.value.trim() || !email.value.trim() || !password.value.trim() || !displayName.value.trim()) {
+    errorMessage.value = 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน'
+    return
+  }
+  if (password.value.length < 6) {
+    errorMessage.value = 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร'
+    return
+  }
+
   try {
-    await authStore.register(username.value, email.value, password.value)
-    router.push('/')
+    await authStore.register(username.value, email.value, password.value, displayName.value, bio.value)
+    
+    await Swal.fire({
+      icon: 'success',
+      title: 'สมัครสมาชิกสำเร็จ!',
+      text: 'กรุณาเข้าสู่ระบบด้วยบัญชีใหม่ของคุณ',
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#0ea5e9'
+    })
+    
+    router.push('/login')
   } catch (err) {
     errorMessage.value = err.message || 'สมัครสมาชิกไม่สำเร็จ โปรดลองอีกครั้ง'
   }

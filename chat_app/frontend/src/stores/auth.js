@@ -56,20 +56,20 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function register(username, email, password) {
+  async function register(username, email, password, display_name, bio) {
     loading.value = true
     error.value = null
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password }),
+        body: JSON.stringify({ username, email, password, display_name, bio }),
       })
       const data = await response.json()
       if (!response.ok) {
         throw new Error(data.error || data.message || 'Registration failed')
       }
-      setAuth(data.token, data.user)
+      // do not call setAuth since we redirect to login
       return data
     } catch (err) {
       error.value = err.message
