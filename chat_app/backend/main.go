@@ -60,13 +60,14 @@ func main() {
 	messageRepo := message.NewMessageRepository(db)
 	roomRepo := room.NewRoomRepository(db)
 
+	wsHub := wsPkg.NewHub()
+	wsHub.SetRoomRepo(roomRepo)
+
 	authService := auth.NewAuthService(userRepo, jwtSecret)
 	friendService := friend.NewFriendService(friendRepo, userRepo)
 	messageService := message.NewMessageService(messageRepo, friendRepo)
-	roomService := room.NewRoomService(roomRepo)
+	roomService := room.NewRoomService(roomRepo, userRepo, messageRepo, wsHub)
 
-	wsHub := wsPkg.NewHub()
-	wsHub.SetRoomRepo(roomRepo)
 	wsHandler := wsPkg.NewWSHandler(wsHub, messageService, friendService, userRepo)
 
 	authController := auth.NewAuthController(authService)

@@ -12,4 +12,8 @@ func SetupRoomRoutes(app *fiber.App, controller *RoomController, jwtMiddleware f
 	api.Post("/:id/invite", controller.InviteUser)
 	api.Get("/invites", controller.GetPendingInvites)
 	api.Post("/invites/:room_id/accept", controller.AcceptInvite)
+
+	api.Get("/:id/members", controller.GetRoomMembers)
+	api.Post("/:id/leave", controller.LeaveRoom)
+	api.Delete("/:id/members/:user_id", controller.RemoveMember)
 }

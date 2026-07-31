@@ -14,6 +14,8 @@ type RoomRepository interface {
 	UpdateRoomMember(member *models.RoomMember) error
 	GetRoomMember(roomID, userID uint) (*models.RoomMember, error)
 	GetJoinedRoomMembers(roomID uint) ([]models.RoomMember, error)
+	GetRoomMembersWithUser(roomID uint) ([]models.RoomMember, error)
+	RemoveRoomMember(roomID, userID uint) error
 }
 
 type roomRepository struct {
@@ -72,4 +74,14 @@ func (r *roomRepository) GetJoinedRoomMembers(roomID uint) ([]models.RoomMember,
 	var members []models.RoomMember
 	err := r.db.Where("room_id = ? AND status = ?", roomID, "joined").Find(&members).Error
 	return members, err
+}
+
+func (r *roomRepository) GetRoomMembersWithUser(roomID uint) ([]models.RoomMember, error) {
+	var members []models.RoomMember
+	err := r.db.Preload("User").Where("room_id = ? AND status = ?", roomID, "joined").Find(&members).Error
+	return members, err
+}
+
+func (r *roomRepository) RemoveRoomMember(roomID, userID uint) error {
+	return r.db.Where("room_id = ? AND user_id = ?", roomID, userID).Delete(&models.RoomMember{}).Error
 }

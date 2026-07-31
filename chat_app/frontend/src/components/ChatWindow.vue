@@ -27,28 +27,33 @@
             </svg>
           </button>
 
-          <!-- Friend/Room Avatar -->
-          <div class="relative cursor-pointer" @click="openFriendProfile">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
-              <img v-if="currentHeader.avatar_url" :src="getFullUrl(currentHeader.avatar_url)" class="w-full h-full object-cover" />
-              <span v-else>{{ getInitial(currentHeader.name) }}</span>
+          <!-- Friend/Room Avatar & Info -->
+          <div 
+            class="flex items-center space-x-3 cursor-pointer"
+            @click="selectedRoom ? (isGroupModalOpen = true) : openFriendProfile()"
+          >
+            <div class="relative">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
+                <img v-if="currentHeader.avatar_url" :src="getFullUrl(currentHeader.avatar_url)" class="w-full h-full object-cover" />
+                <span v-else>{{ getInitial(currentHeader.name) }}</span>
+              </div>
+              <span v-if="selectedFriend" class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" :class="friendStatus.is_online ? 'bg-green-500' : 'bg-gray-400'"></span>
             </div>
-            <span v-if="selectedFriend" class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" :class="friendStatus.is_online ? 'bg-green-500' : 'bg-gray-400'"></span>
-          </div>
 
-          <!-- Info -->
-          <div>
-            <h3 class="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
-              {{ currentHeader.name }}
-            </h3>
-            <div v-if="selectedFriend">
-              <p v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="text-xs text-sky-500 font-medium animate-pulse">กำลังพิมพ์...</p>
-              <p v-else-if="friendStatus.is_online" class="text-xs text-green-600 font-medium">ออนไลน์</p>
-              <p v-else-if="friendStatus.last_seen" class="text-xs text-gray-400 font-medium">ใช้งานล่าสุด: {{ formatLastSeen(friendStatus.last_seen) }}</p>
-              <p v-else class="text-xs text-gray-400 font-medium">ออฟไลน์</p>
-            </div>
-            <div v-else-if="selectedRoom">
-              <p class="text-xs text-gray-400 font-medium">กลุ่มสนทนา</p>
+            <!-- Info -->
+            <div>
+              <h3 class="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
+                {{ currentHeader.name }}
+              </h3>
+              <div v-if="selectedFriend">
+                <p v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="text-xs text-sky-500 font-medium animate-pulse">กำลังพิมพ์...</p>
+                <p v-else-if="friendStatus.is_online" class="text-xs text-green-600 font-medium">ออนไลน์</p>
+                <p v-else-if="friendStatus.last_seen" class="text-xs text-gray-400 font-medium">ใช้งานล่าสุด: {{ formatLastSeen(friendStatus.last_seen) }}</p>
+                <p v-else class="text-xs text-gray-400 font-medium">ออฟไลน์</p>
+              </div>
+              <div v-else-if="selectedRoom">
+                <p class="text-xs text-gray-400 font-medium">กลุ่มสนทนา</p>
+              </div>
             </div>
           </div>
         </div>
@@ -80,11 +85,22 @@
         <div
           v-for="msg in chatStore.activeMessages"
           :key="msg.id || msg.created_at"
-          :class="[
-            'flex flex-col',
-            isSelf(msg) ? 'items-end' : 'items-start'
-          ]"
         >
+          <!-- System Message -->
+          <div v-if="msg.type === 'system' || msg.msg_type === 'system'" class="w-full flex justify-center my-2">
+            <span class="px-3 py-1 bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs rounded-full shadow-sm text-center font-medium">
+              {{ msg.content }}
+            </span>
+          </div>
+
+          <!-- User Message -->
+          <div
+            v-else
+            :class="[
+              'flex flex-col',
+              isSelf(msg) ? 'items-end' : 'items-start'
+            ]"
+          >
           <!-- Message Bubble -->
           <!-- Message Bubble Container -->
           <div class="relative group flex items-start max-w-[85%] md:max-w-[75%]" :class="isSelf(msg) ? 'flex-row-reverse space-x-reverse space-x-2' : 'flex-row space-x-2'">
@@ -160,6 +176,7 @@
             </span>
           </div>
         </div>
+        </div>
 
         <!-- Typing Indicator -->
         <div v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="flex flex-col items-start mt-2 mb-2">
@@ -195,6 +212,14 @@
         </div>
         <form @submit.prevent="handleSend" class="flex items-end space-x-2 w-full">
           <input type="file" ref="fileInput" @change="handleFileUpload" class="hidden" accept="image/*,.pdf,.doc,.docx,.zip,.rar" />
+          <button
+            type="button"
+            @click="triggerFileInput"
+            class="p-2.5 text-gray-400 hover:text-sky-500 hover:bg-sky-50 dark:bg-sky-900/30 rounded-full transition"
+            title="แนบไฟล์"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+          </button>
           <div class="relative flex-shrink-0">
             <button
               type="button"
@@ -238,6 +263,13 @@
     :is-own-profile="false"
     @close="isProfileOpen = false" 
   />
+
+  <GroupMembersModal
+    :is-open="isGroupModalOpen"
+    :room-id="chatStore.selectedRoomId"
+    :room-name="selectedRoom?.name || ''"
+    @close="isGroupModalOpen = false"
+  />
 </template>
 
 <script setup>
@@ -247,6 +279,7 @@ import { useFriendsStore } from '../stores/friends'
 import { useChatStore } from '../stores/chat'
 import { useRoomsStore } from '../stores/rooms'
 import ProfileModal from './ProfileModal.vue'
+import GroupMembersModal from './GroupMembersModal.vue'
 
 import Swal from 'sweetalert2'
 
@@ -274,6 +307,9 @@ let typingThrottleTimer = null
 // Profile State
 const isProfileOpen = ref(false)
 const selectedProfileUser = ref({})
+
+// Group Members Modal State
+const isGroupModalOpen = ref(false)
 
 function getFullUrl(url) {
   if (!url) return ''
@@ -422,7 +458,7 @@ function triggerFileInput() {
 
 async function handleFileUpload(event) {
   const file = event.target.files[0]
-  if (!file || !chatStore.selectedFriendId) return
+  if (!file || (!chatStore.selectedFriendId && !chatStore.selectedRoomId)) return
   
   if (file.size > 5 * 1024 * 1024) {
     Swal.fire({ icon: 'error', title: 'ไฟล์ใหญ่เกินไป', text: 'ขนาดไฟล์ต้องไม่เกิน 5MB' })

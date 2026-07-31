@@ -106,6 +106,61 @@ export const useRoomsStore = defineStore('rooms', () => {
     }
   }
 
+  async function fetchRoomMembers(roomId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await fetch(`/api/rooms/${roomId}/members`, { headers: getHeaders() })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch members')
+      return data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function leaveRoom(roomId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await fetch(`/api/rooms/${roomId}/leave`, {
+        method: 'POST',
+        headers: getHeaders()
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to leave room')
+      rooms.value = rooms.value.filter(r => r.id !== roomId)
+      return data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function removeRoomMember(roomId, userId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await fetch(`/api/rooms/${roomId}/members/${userId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to remove member')
+      return data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     rooms,
     pendingInvites,
@@ -115,6 +170,10 @@ export const useRoomsStore = defineStore('rooms', () => {
     fetchPendingInvites,
     createRoom,
     inviteToRoom,
-    acceptInvite
+    acceptInvite,
+    fetchRoomMembers,
+    leaveRoom,
+    removeRoomMember
   }
 })
+

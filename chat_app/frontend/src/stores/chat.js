@@ -438,6 +438,15 @@ export const useChatStore = defineStore('chat', () => {
           } else if (data.type === 'room_invite') {
             const roomsStore = useRoomsStore()
             roomsStore.fetchPendingInvites()
+          } else if (data.type === 'room_left' || data.type === 'room_kicked') {
+            const roomsStore = useRoomsStore()
+            roomsStore.rooms = roomsStore.rooms.filter(r => r.id != data.room_id)
+            if (selectedRoomId.value == data.room_id) {
+              selectedRoomId.value = null
+              if (roomMessages.value[data.room_id]) {
+                delete roomMessages.value[data.room_id]
+              }
+            }
           } else if (data.type === 'error') {
             console.error('[WS Error]', data.message)
             error.value = data.message

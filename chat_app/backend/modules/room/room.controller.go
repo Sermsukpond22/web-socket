@@ -99,3 +99,58 @@ func (c *RoomController) AcceptInvite(ctx *fiber.Ctx) error {
 
 	return ctx.JSON(fiber.Map{"message": "Invite accepted"})
 }
+
+func (c *RoomController) GetRoomMembers(ctx *fiber.Ctx) error {
+	roomIDParam := ctx.Params("id")
+	roomID, err := strconv.ParseUint(roomIDParam, 10, 32)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid room ID"})
+	}
+
+	userID := ctx.Locals("user_id").(uint)
+
+	members, err := c.service.GetRoomMembers(uint(roomID), userID)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return ctx.JSON(members)
+}
+
+func (c *RoomController) LeaveRoom(ctx *fiber.Ctx) error {
+	roomIDParam := ctx.Params("id")
+	roomID, err := strconv.ParseUint(roomIDParam, 10, 32)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid room ID"})
+	}
+
+	userID := ctx.Locals("user_id").(uint)
+
+	if err := c.service.LeaveRoom(uint(roomID), userID); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return ctx.JSON(fiber.Map{"message": "Left room successfully"})
+}
+
+func (c *RoomController) RemoveMember(ctx *fiber.Ctx) error {
+	roomIDParam := ctx.Params("id")
+	roomID, err := strconv.ParseUint(roomIDParam, 10, 32)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid room ID"})
+	}
+
+	userIDParam := ctx.Params("user_id")
+	targetUserID, err := strconv.ParseUint(userIDParam, 10, 32)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user ID"})
+	}
+
+	adminID := ctx.Locals("user_id").(uint)
+
+	if err := c.service.RemoveMember(uint(roomID), adminID, uint(targetUserID)); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return ctx.JSON(fiber.Map{"message": "Member removed successfully"})
+}
