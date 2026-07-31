@@ -204,14 +204,19 @@
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex justify-between items-baseline mb-0.5">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                  {{ room.name }}
-                </h3>
-                <span class="text-[10px] text-gray-400 font-medium">
+                <div class="flex items-center truncate">
+                  <h3 :class="['text-sm truncate', chatStore.unreadRoomCounts[room.id] ? 'font-bold text-sky-600' : 'font-semibold text-gray-900 dark:text-gray-100']">
+                    {{ room.name }}
+                  </h3>
+                  <span v-if="chatStore.unreadRoomCounts[room.id]" class="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold leading-none text-white bg-red-500 rounded-full">
+                    {{ chatStore.unreadRoomCounts[room.id] > 99 ? '99+' : chatStore.unreadRoomCounts[room.id] }}
+                  </span>
+                </div>
+                <span class="text-[10px] text-gray-400 font-medium whitespace-nowrap ml-2">
                   {{ formatLastRoomMessageTime(room.id) }}
                 </span>
               </div>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+              <p :class="['text-[11px] truncate', chatStore.unreadRoomCounts[room.id] ? 'font-bold text-gray-800 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400']">
                 {{ getLastRoomMessagePreview(room.id) }}
               </p>
             </div>

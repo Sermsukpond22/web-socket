@@ -494,7 +494,7 @@ async function confirmDelete(msg) {
     cancelButtonText: 'ยกเลิก'
   })
   if (result.isConfirmed) {
-    chatStore.deleteMessage(msg.id, chatStore.selectedFriendId)
+    chatStore.deleteMessage(msg.id, chatStore.selectedFriendId, chatStore.selectedRoomId)
   }
 }
 

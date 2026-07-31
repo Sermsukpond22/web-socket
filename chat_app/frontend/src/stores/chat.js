@@ -14,6 +14,7 @@ export const useChatStore = defineStore('chat', () => {
   const typingUsers = ref({})
   const typingTimers = {}
   const unreadCounts = ref({})
+  const unreadRoomCounts = ref({})
   const userStatus = ref({}) // key: user_id, value: { is_online, last_seen }
 
   const selectedRoomId = ref(null)
@@ -100,7 +101,8 @@ export const useChatStore = defineStore('chat', () => {
       const response = await fetch('/api/messages/unread', { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
-        unreadCounts.value = data || {}
+        unreadCounts.value = data.users || {}
+        unreadRoomCounts.value = data.rooms || {}
       }
     } catch (err) {
       console.error('Failed to fetch unread counts', err)
@@ -177,6 +179,11 @@ export const useChatStore = defineStore('chat', () => {
           roomMessages.value[roomId] = [...newMessages, ...roomMessages.value[roomId]]
         } else {
           roomMessages.value[roomId] = newMessages
+        }
+
+        if (roomMessages.value[roomId] && roomMessages.value[roomId].length > 0) {
+          const latestMsg = roomMessages.value[roomId][roomMessages.value[roomId].length - 1]
+          markRoomAsRead(roomId, latestMsg.id)
         }
       }
     } catch (err) {
@@ -300,12 +307,26 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function deleteMessage(msgId, receiverId) {
+  function deleteMessage(msgId, receiverId, roomId = null) {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) {
       ws.value.send(JSON.stringify({
         type: 'delete_message',
         id: msgId,
-        receiver_id: receiverId
+        receiver_id: receiverId,
+        room_id: roomId
+      }))
+    }
+  }
+
+  function markRoomAsRead(roomId, lastMessageId) {
+    if (unreadRoomCounts.value[roomId] > 0) {
+      unreadRoomCounts.value[roomId] = 0
+    }
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(JSON.stringify({
+        type: 'read_room',
+        room_id: roomId,
+        id: lastMessageId
       }))
     }
   }
@@ -358,7 +379,13 @@ export const useChatStore = defineStore('chat', () => {
             appendMessage(data)
 
             if (data.sender_id !== authStore.user?.id) {
-              if (data.sender_id !== selectedFriendId.value) {
+              if (data.room_id) {
+                if (data.room_id !== selectedRoomId.value) {
+                  unreadRoomCounts.value[data.room_id] = (unreadRoomCounts.value[data.room_id] || 0) + 1
+                } else {
+                  markRoomAsRead(data.room_id, data.id)
+                }
+              } else if (data.sender_id !== selectedFriendId.value) {
                 unreadCounts.value[data.sender_id] = (unreadCounts.value[data.sender_id] || 0) + 1
               }
               // Play notification sound
@@ -388,13 +415,15 @@ export const useChatStore = defineStore('chat', () => {
               }
             }
           } else if (data.type === 'message_deleted') {
-            // Find message and mark it deleted or remove it
-            // Need to search all lists since we might not know the exact friend id easily
-            Object.keys(messages.value).forEach(listId => {
-              const msgIndex = messages.value[listId].findIndex(m => m.id === data.id)
-              if (msgIndex !== -1) {
-                messages.value[listId][msgIndex].is_deleted = true
-              }
+            // Find message in friend or room messages
+            const lists = [messages.value, roomMessages.value]
+            lists.forEach(map => {
+              Object.keys(map).forEach(listId => {
+                const msgIndex = map[listId].findIndex(m => m.id === data.id)
+                if (msgIndex !== -1) {
+                  map[listId][msgIndex].is_deleted = true
+                }
+              })
             })
           } else if (data.type === 'user_status') {
             userStatus.value[data.user_id] = {
@@ -475,10 +504,12 @@ export const useChatStore = defineStore('chat', () => {
     sendTyping,
     isUserTyping,
     unreadCounts,
+    unreadRoomCounts,
     fetchUnreadCounts,
     sendReadReceipt,
     editMessage,
     deleteMessage,
+    markRoomAsRead,
     userStatus,
     selectedRoomId,
     roomMessages,

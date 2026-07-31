@@ -13,8 +13,9 @@ type MessageRepository interface {
 	GetRoomChatHistory(roomID uint) ([]models.Message, error)
 	GetRoomChatHistoryPaginated(roomID uint, limit int, beforeID uint) ([]models.Message, error)
 	GetLatestMessageID(userAID, userBID uint) (uint, error)
-	GetUnreadCounts(userID uint) (map[uint]int64, error)
+	GetUnreadCounts(userID uint) (map[uint]int64, map[uint]int64, error)
 	MarkMessagesAsRead(senderID, receiverID uint) error
+	MarkRoomMessagesAsRead(roomID, userID uint, messageID uint) error
 	GetMessageByID(msgID uint) (*models.Message, error)
 	UpdateMessage(msg *models.Message) error
 	DeleteMessage(msgID uint) error
@@ -108,6 +109,12 @@ func (r *messageRepository) MarkMessagesAsRead(senderID, receiverID uint) error 
 		Updates(map[string]interface{}{"is_read": true, "read_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error
 }
 
+func (r *messageRepository) MarkRoomMessagesAsRead(roomID, userID uint, messageID uint) error {
+	return r.db.Model(&models.RoomMember{}).
+		Where("room_id = ? AND user_id = ?", roomID, userID).
+		Update("last_read_message_id", messageID).Error
+}
+
 func (r *messageRepository) GetLatestMessageID(userAID, userBID uint) (uint, error) {
 	var maxID uint
 	err := r.db.Model(&models.Message{}).
@@ -116,29 +123,50 @@ func (r *messageRepository) GetLatestMessageID(userAID, userBID uint) (uint, err
 	return maxID, err
 }
 
-func (r *messageRepository) GetUnreadCounts(userID uint) (map[uint]int64, error) {
+func (r *messageRepository) GetUnreadCounts(userID uint) (map[uint]int64, map[uint]int64, error) {
 	// Count messages where receiver is userID and is_read is false
 	// Group by sender_id
 	type Result struct {
-		SenderID uint
-		Count    int64
+		ID    uint   `gorm:"column:id"`
+		Count int64  `gorm:"column:count"`
 	}
-	var results []Result
+	var userResults []Result
 	err := r.db.Model(&models.Message{}).
-		Select("sender_id, count(*) as count").
+		Select("sender_id as id, count(*) as count").
 		Where("receiver_id = ? AND is_read = ?", userID, false).
 		Group("sender_id").
-		Scan(&results).Error
+		Scan(&userResults).Error
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	counts := make(map[uint]int64)
-	for _, r := range results {
-		counts[r.SenderID] = r.Count
+	userCounts := make(map[uint]int64)
+	for _, res := range userResults {
+		userCounts[res.ID] = res.Count
 	}
-	return counts, nil
+
+	// Count messages in rooms the user is a member of, where message.id > room_member.last_read_message_id
+	var roomResults []Result
+	err = r.db.Table("messages").
+		Select("messages.room_id as id, count(*) as count").
+		Joins("JOIN room_members ON room_members.room_id = messages.room_id").
+		Where("room_members.user_id = ?", userID).
+		Where("messages.id > COALESCE(room_members.last_read_message_id, 0)").
+		Where("messages.is_deleted = ?", false).
+		Group("messages.room_id").
+		Scan(&roomResults).Error
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	roomCounts := make(map[uint]int64)
+	for _, res := range roomResults {
+		roomCounts[res.ID] = res.Count
+	}
+
+	return userCounts, roomCounts, nil
 }
 
 func (r *messageRepository) GetMessageByID(msgID uint) (*models.Message, error) {

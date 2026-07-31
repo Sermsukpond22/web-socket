@@ -47,6 +47,7 @@ type WSErrorEvent struct {
 type MessageService interface {
 	SendMessage(senderID uint, receiverID, roomID, replyToID *uint, content, msgType, fileURL string) (*models.Message, error)
 	MarkMessagesAsRead(senderID, receiverID uint) error
+	MarkRoomMessagesAsRead(roomID, userID uint, messageID uint) error
 	EditMessage(userID, msgID uint, content string) (*models.Message, error)
 	DeleteMessage(userID, msgID uint) error
 }
@@ -232,6 +233,20 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			"type":      "read_receipt",
 			"reader_id": client.UserID,
 		})
+
+	case "read_room":
+		var roomID uint
+		if incoming.RoomID != nil {
+			roomID = *incoming.RoomID
+		}
+		if roomID == 0 {
+			return
+		}
+
+		err := h.messageService.MarkRoomMessagesAsRead(roomID, client.UserID, incoming.ID)
+		if err != nil {
+			return
+		}
 
 	case "edit_message":
 		msgID := incoming.ID

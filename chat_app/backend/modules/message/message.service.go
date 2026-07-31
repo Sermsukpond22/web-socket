@@ -15,8 +15,9 @@ type MessageService interface {
 	GetRoomChatHistory(roomID uint) ([]models.Message, error)
 	GetRoomChatHistoryPaginated(roomID uint, limit int, beforeID uint) ([]models.Message, error)
 	GetLatestMessageID(userAID, userBID uint) (uint, error)
-	GetUnreadCounts(userID uint) (map[uint]int64, error)
+	GetUnreadCounts(userID uint) (map[uint]int64, map[uint]int64, error)
 	MarkMessagesAsRead(senderID, receiverID uint) error
+	MarkRoomMessagesAsRead(roomID, userID uint, messageID uint) error
 	EditMessage(userID, msgID uint, newContent string) (*models.Message, error)
 	DeleteMessage(userID, msgID uint) error
 }
@@ -125,11 +126,15 @@ func (s *messageService) MarkMessagesAsRead(senderID, receiverID uint) error {
 	return nil
 }
 
+func (s *messageService) MarkRoomMessagesAsRead(roomID, userID uint, messageID uint) error {
+	return s.messageRepo.MarkRoomMessagesAsRead(roomID, userID, messageID)
+}
+
 func (s *messageService) GetLatestMessageID(userAID, userBID uint) (uint, error) {
 	return s.messageRepo.GetLatestMessageID(userAID, userBID)
 }
 
-func (s *messageService) GetUnreadCounts(userID uint) (map[uint]int64, error) {
+func (s *messageService) GetUnreadCounts(userID uint) (map[uint]int64, map[uint]int64, error) {
 	return s.messageRepo.GetUnreadCounts(userID)
 }
 

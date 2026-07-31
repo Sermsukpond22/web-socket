@@ -157,14 +157,17 @@ func (c *MessageController) GetUnreadCounts(ctx *fiber.Ctx) error {
 		})
 	}
 
-	counts, err := c.messageService.GetUnreadCounts(userID)
+	userCounts, roomCounts, err := c.messageService.GetUnreadCounts(userID)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to get unread counts",
 		})
 	}
 
-	return ctx.JSON(counts)
+	return ctx.JSON(fiber.Map{
+		"users": userCounts,
+		"rooms": roomCounts,
+	})
 }
 
 func (c *MessageController) UploadFile(ctx *fiber.Ctx) error {
