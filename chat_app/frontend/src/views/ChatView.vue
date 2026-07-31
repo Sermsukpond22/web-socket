@@ -5,7 +5,7 @@
       <div 
         :class="[
           'w-full md:w-[350px] flex-shrink-0 h-full',
-          chatStore.selectedFriendId ? 'hidden md:block' : 'block'
+          (chatStore.selectedFriendId || chatStore.selectedRoomId) ? 'hidden md:block' : 'block'
         ]"
       >
         <Sidebar />
@@ -15,7 +15,7 @@
       <div 
         :class="[
           'flex-1 h-full min-w-0 border-l border-gray-200',
-          !chatStore.selectedFriendId ? 'hidden md:flex' : 'flex'
+          !(chatStore.selectedFriendId || chatStore.selectedRoomId) ? 'hidden md:flex' : 'flex'
         ]"
       >
         <ChatWindow @back="handleBack" />
@@ -36,6 +36,7 @@ const chatStore = useChatStore()
 
 function handleBack() {
   chatStore.selectedFriendId = null
+  chatStore.selectedRoomId = null
 }
 
 onMounted(() => {

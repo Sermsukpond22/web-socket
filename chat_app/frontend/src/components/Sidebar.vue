@@ -63,6 +63,17 @@
         ข้อความ
       </button>
       <button
+        @click="friendsStore.activeTab = 'groups'"
+        :class="[
+          'flex-1 py-2.5 text-center transition-colors border-b-2',
+          friendsStore.activeTab === 'groups' 
+            ? 'border-sky-500 text-sky-600 bg-white dark:bg-gray-900' 
+            : 'border-transparent hover:text-gray-900 dark:hover:text-white dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 dark:bg-gray-800'
+        ]"
+      >
+        กลุ่ม
+      </button>
+      <button
         @click="friendsStore.activeTab = 'pending'"
         :class="[
           'flex-1 py-2.5 text-center transition-colors border-b-2 relative',
@@ -136,6 +147,72 @@
               </div>
               <p :class="['text-xs truncate', chatStore.unreadCounts[friend.id] ? 'font-bold text-gray-800 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400']">
                 {{ getLastMessageText(friend.id) || friend.email || 'คลิกเพื่อเริ่มแชท' }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GROUPS TAB -->
+      <div v-else-if="friendsStore.activeTab === 'groups'">
+        <div class="p-4 border-b border-gray-100 dark:border-gray-800">
+          <button @click="handleCreateGroup" class="w-full bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold py-2 rounded-md transition flex items-center justify-center space-x-2">
+            <span>+ สร้างกลุ่มใหม่</span>
+          </button>
+        </div>
+        
+        <!-- Pending Group Invites -->
+        <div v-if="roomsStore.pendingInvites.length > 0" class="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-100 dark:border-yellow-900/30">
+          <h4 class="text-xs font-semibold text-yellow-800 dark:text-yellow-500 mb-2">คำเชิญเข้ากลุ่ม ({{ roomsStore.pendingInvites.length }})</h4>
+          <div class="space-y-2">
+            <div v-for="inv in roomsStore.pendingInvites" :key="inv.room_id" class="flex items-center justify-between bg-white dark:bg-gray-800 p-2 rounded shadow-sm">
+              <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-green-400 to-teal-500 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                  <img v-if="inv.room?.avatar_url" :src="getFullUrl(inv.room.avatar_url)" class="w-full h-full object-cover rounded-full" />
+                  <span v-else>{{ getInitial(inv.room?.name) }}</span>
+                </div>
+                <div class="truncate max-w-[100px]">
+                  <p class="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">{{ inv.room?.name || 'Group' }}</p>
+                </div>
+              </div>
+              <button @click="roomsStore.acceptInvite(inv.room_id)" class="px-2 py-1 bg-sky-500 hover:bg-sky-600 text-white text-[10px] font-semibold rounded">
+                ยอมรับ
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Groups List -->
+        <div v-if="roomsStore.rooms.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+          <p>คุณยังไม่มีกลุ่ม<br/>สร้างกลุ่มหรือรอคำเชิญจากเพื่อน</p>
+        </div>
+        <div v-else class="divide-y divide-gray-50 dark:divide-gray-800">
+          <div
+            v-for="room in roomsStore.rooms"
+            :key="room.id"
+            @click="chatStore.selectRoom(room.id)"
+            :class="[
+              'p-3.5 flex items-center space-x-3 cursor-pointer transition duration-150 hover:bg-gray-50 dark:hover:bg-gray-800 dark:bg-gray-800',
+              chatStore.selectedRoomId === room.id ? 'bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-50 dark:bg-sky-900/30' : ''
+            ]"
+          >
+            <div class="relative flex-shrink-0">
+              <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-400 to-green-600 text-white flex items-center justify-center font-bold text-base shadow-sm overflow-hidden">
+                <img v-if="room.avatar_url" :src="getFullUrl(room.avatar_url)" class="w-full h-full object-cover" />
+                <span v-else>{{ getInitial(room.name) }}</span>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-baseline mb-0.5">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {{ room.name }}
+                </h3>
+                <span class="text-[10px] text-gray-400 font-medium">
+                  {{ formatLastRoomMessageTime(room.id) }}
+                </span>
+              </div>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                {{ getLastRoomMessagePreview(room.id) }}
               </p>
             </div>
           </div>
@@ -266,6 +343,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useFriendsStore } from '../stores/friends'
 import { useChatStore } from '../stores/chat'
+import { useRoomsStore } from '../stores/rooms'
 import Swal from 'sweetalert2'
 import ProfileModal from './ProfileModal.vue'
 
@@ -273,6 +351,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const friendsStore = useFriendsStore()
 const chatStore = useChatStore()
+const roomsStore = useRoomsStore()
 
 const searchQuery = ref('')
 const addFriendInput = ref('')
@@ -375,6 +454,31 @@ function getLastMessageText(friendId) {
   return null
 }
 
+function formatLastRoomMessageTime(roomId) {
+  const msgs = chatStore.roomMessages[roomId]
+  if (msgs && msgs.length > 0) {
+    const timestamp = msgs[msgs.length - 1].created_at
+    if (!timestamp) return ''
+    try {
+      const date = new Date(timestamp)
+      const now = new Date()
+      if (date.toDateString() === now.toDateString()) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+      return date.toLocaleDateString()
+    } catch(e) { return '' }
+  }
+  return ''
+}
+
+function getLastRoomMessagePreview(roomId) {
+  const msgs = chatStore.roomMessages[roomId]
+  if (msgs && msgs.length > 0) {
+    return msgs[msgs.length - 1].content
+  }
+  return 'กลุ่มสนทนา'
+}
+
 function selectFriend(friendId) {
   chatStore.selectFriend(friendId)
 }
@@ -475,9 +579,37 @@ async function handleLogout() {
   }
 }
 
+async function handleCreateGroup() {
+  const { value: groupName } = await Swal.fire({
+    title: 'สร้างกลุ่มใหม่',
+    input: 'text',
+    inputLabel: 'ชื่อกลุ่ม',
+    inputPlaceholder: 'พิมพ์ชื่อกลุ่ม...',
+    showCancelButton: true,
+    confirmButtonText: 'สร้าง',
+    cancelButtonText: 'ยกเลิก',
+    inputValidator: (value) => {
+      if (!value) {
+        return 'กรุณาระบุชื่อกลุ่ม!'
+      }
+    }
+  })
+
+  if (groupName) {
+    try {
+      await roomsStore.createRoom(groupName)
+      Swal.fire({ icon: 'success', title: 'สร้างกลุ่มสำเร็จ', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 })
+    } catch (err) {
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถสร้างกลุ่มได้', 'error')
+    }
+  }
+}
+
 onMounted(() => {
   friendsStore.fetchFriends()
   friendsStore.fetchPendingRequests()
+  roomsStore.fetchRooms()
+  roomsStore.fetchPendingInvites()
 })
 </script>
 

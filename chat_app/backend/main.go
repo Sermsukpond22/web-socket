@@ -12,6 +12,7 @@ import (
 	"chat_app/backend/modules/auth"
 	"chat_app/backend/modules/friend"
 	"chat_app/backend/modules/message"
+	"chat_app/backend/modules/room"
 	"chat_app/backend/modules/user"
 	wsPkg "chat_app/backend/websocket"
 
@@ -35,9 +36,16 @@ func main() {
 
 	// Auto-migrate models
 	log.Println("Running database migrations...")
-	if err := db.AutoMigrate(&models.User{}, &models.FriendRequest{}, &models.Friendship{}, &models.Message{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.FriendRequest{}, &models.Friendship{}, &models.Message{}, &models.Room{}, &models.RoomMember{}); err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)
 	}
+
+	// Patch messages table to allow NULL for receiver_id (for room messages)
+	// Some older MySQL migrations might have set this to NOT NULL.
+	if db.Dialector.Name() == "mysql" {
+		db.Exec("ALTER TABLE messages MODIFY receiver_id bigint(20) unsigned NULL;")
+	}
+
 	log.Println("Database migration completed.")
 
 	// JWT Secret
@@ -50,18 +58,22 @@ func main() {
 	userRepo := user.NewUserRepository(db)
 	friendRepo := friend.NewFriendRepository(db)
 	messageRepo := message.NewMessageRepository(db)
+	roomRepo := room.NewRoomRepository(db)
 
 	authService := auth.NewAuthService(userRepo, jwtSecret)
 	friendService := friend.NewFriendService(friendRepo, userRepo)
 	messageService := message.NewMessageService(messageRepo, friendRepo)
+	roomService := room.NewRoomService(roomRepo)
 
 	wsHub := wsPkg.NewHub()
+	wsHub.SetRoomRepo(roomRepo)
 	wsHandler := wsPkg.NewWSHandler(wsHub, messageService, friendService, userRepo)
 
 	authController := auth.NewAuthController(authService)
 	friendController := friend.NewFriendController(friendService, wsHub)
 	messageController := message.NewMessageController(messageService)
 	userController := user.NewUserController(userRepo)
+	roomController := room.NewRoomController(roomService, wsHub)
 
 	// Create Fiber App
 	app := fiber.New(fiber.Config{
@@ -98,6 +110,7 @@ func main() {
 	friend.SetupFriendRoutes(app, friendController, authService)
 	message.SetupMessageRoutes(app, messageController, wsHandler, authService)
 	user.RegisterUserRoutes(app, userController, auth.JWTMiddleware(authService))
+	room.SetupRoomRoutes(app, roomController, auth.JWTMiddleware(authService))
 
 	// Get Port from env or default to 3000
 	port := os.Getenv("PORT")

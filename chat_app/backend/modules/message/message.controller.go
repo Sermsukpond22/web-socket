@@ -31,14 +31,8 @@ func (c *MessageController) GetChatHistory(ctx *fiber.Ctx) error {
 		})
 	}
 
-	friendIDParam := ctx.Params("friend_id")
-	friendID, err := strconv.ParseUint(friendIDParam, 10, 64)
-	if err != nil || friendID == 0 {
-		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid friend ID",
-		})
-	}
-
+	roomIDParam := ctx.Query("room_id")
+	
 	limitStr := ctx.Query("limit", "50")
 	beforeIDStr := ctx.Query("before_id", "0")
 
@@ -53,10 +47,71 @@ func (c *MessageController) GetChatHistory(ctx *fiber.Ctx) error {
 	}
 
 	var messages []models.Message
-	if limit < 1000 { // If limit is provided, use paginated (default 50)
-		messages, err = c.messageService.GetChatHistoryPaginated(userID, uint(friendID), limit, uint(beforeID))
+
+	if roomIDParam != "" {
+		roomID, err := strconv.ParseUint(roomIDParam, 10, 64)
+		if err != nil || roomID == 0 {
+			return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid room ID"})
+		}
+		if limit < 1000 {
+			messages, err = c.messageService.GetRoomChatHistoryPaginated(uint(roomID), limit, uint(beforeID))
+		} else {
+			messages, err = c.messageService.GetRoomChatHistory(uint(roomID))
+		}
 	} else {
-		messages, err = c.messageService.GetChatHistory(userID, uint(friendID))
+		friendIDParam := ctx.Params("friend_id")
+		friendID, err := strconv.ParseUint(friendIDParam, 10, 64)
+		if err != nil || friendID == 0 {
+			return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid friend ID"})
+		}
+		if limit < 1000 {
+			messages, err = c.messageService.GetChatHistoryPaginated(userID, uint(friendID), limit, uint(beforeID))
+		} else {
+			messages, err = c.messageService.GetChatHistory(userID, uint(friendID))
+		}
+	}
+
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return ctx.JSON(messages)
+}
+
+func (c *MessageController) GetRoomMessages(ctx *fiber.Ctx) error {
+	_, err := utils.GetUserIDFromContext(ctx)
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized access",
+		})
+	}
+
+	roomIDParam := ctx.Params("room_id")
+	limitStr := ctx.Query("limit", "50")
+	beforeIDStr := ctx.Query("before_id", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 50
+	}
+
+	beforeID, err := strconv.ParseUint(beforeIDStr, 10, 64)
+	if err != nil {
+		beforeID = 0
+	}
+
+	roomID, err := strconv.ParseUint(roomIDParam, 10, 64)
+	if err != nil || roomID == 0 {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid room ID"})
+	}
+
+	var messages []models.Message
+	if limit < 1000 {
+		messages, err = c.messageService.GetRoomChatHistoryPaginated(uint(roomID), limit, uint(beforeID))
+	} else {
+		messages, err = c.messageService.GetRoomChatHistory(uint(roomID))
 	}
 
 	if err != nil {

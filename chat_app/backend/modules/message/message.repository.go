@@ -10,6 +10,8 @@ type MessageRepository interface {
 	SaveMessage(msg *models.Message) error
 	GetChatHistory(userAID, userBID uint) ([]models.Message, error)
 	GetChatHistoryPaginated(userAID, userBID uint, limit int, beforeID uint) ([]models.Message, error)
+	GetRoomChatHistory(roomID uint) ([]models.Message, error)
+	GetRoomChatHistoryPaginated(roomID uint, limit int, beforeID uint) ([]models.Message, error)
 	GetLatestMessageID(userAID, userBID uint) (uint, error)
 	GetUnreadCounts(userID uint) (map[uint]int64, error)
 	MarkMessagesAsRead(senderID, receiverID uint) error
@@ -30,12 +32,12 @@ func (r *messageRepository) SaveMessage(msg *models.Message) error {
 	if err := r.db.Create(msg).Error; err != nil {
 		return err
 	}
-	return r.db.Preload("Sender").Preload("Receiver").First(msg, msg.ID).Error
+	return r.db.Preload("Sender").Preload("Receiver").Preload("Room").Preload("ReplyTo").First(msg, msg.ID).Error
 }
 
 func (r *messageRepository) GetChatHistory(userAID, userBID uint) ([]models.Message, error) {
 	var messages []models.Message
-	err := r.db.Preload("Sender").Preload("Receiver").
+	err := r.db.Preload("Sender").Preload("Receiver").Preload("ReplyTo").
 		Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)", userAID, userBID, userBID, userAID).
 		Order("id ASC").
 		Find(&messages).Error
@@ -47,7 +49,7 @@ func (r *messageRepository) GetChatHistory(userAID, userBID uint) ([]models.Mess
 
 func (r *messageRepository) GetChatHistoryPaginated(userAID, userBID uint, limit int, beforeID uint) ([]models.Message, error) {
 	var messages []models.Message
-	query := r.db.Preload("Sender").Preload("Receiver").
+	query := r.db.Preload("Sender").Preload("Receiver").Preload("ReplyTo").
 		Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)", userAID, userBID, userBID, userAID)
 
 	if beforeID > 0 {
@@ -61,6 +63,38 @@ func (r *messageRepository) GetChatHistoryPaginated(userAID, userBID uint, limit
 	}
 
 	// Reverse array to maintain ASC order
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+func (r *messageRepository) GetRoomChatHistory(roomID uint) ([]models.Message, error) {
+	var messages []models.Message
+	err := r.db.Preload("Sender").Preload("ReplyTo").
+		Where("room_id = ?", roomID).
+		Order("id ASC").
+		Find(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+func (r *messageRepository) GetRoomChatHistoryPaginated(roomID uint, limit int, beforeID uint) ([]models.Message, error) {
+	var messages []models.Message
+	query := r.db.Preload("Sender").Preload("ReplyTo").Where("room_id = ?", roomID)
+
+	if beforeID > 0 {
+		query = query.Where("id < ?", beforeID)
+	}
+
+	err := query.Order("id DESC").Limit(limit).Find(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
 	}

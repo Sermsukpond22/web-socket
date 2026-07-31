@@ -1,12 +1,18 @@
 package websocket
 
 import (
+	"chat_app/backend/models"
 	"sync"
 )
 
+type RoomRepository interface {
+	GetJoinedRoomMembers(roomID uint) ([]models.RoomMember, error)
+}
+
 type Hub struct {
-	clients map[uint][]*Client
-	mu      sync.RWMutex
+	clients  map[uint][]*Client
+	mu       sync.RWMutex
+	roomRepo RoomRepository
 }
 
 func NewHub() *Hub {
@@ -71,4 +77,26 @@ func (h *Hub) IsUserOnline(userID uint) bool {
 	defer h.mu.RUnlock()
 	clients, ok := h.clients[userID]
 	return ok && len(clients) > 0
+}
+
+func (h *Hub) SetRoomRepo(repo RoomRepository) {
+	h.roomRepo = repo
+}
+
+func (h *Hub) SendToRoom(roomID uint, payload interface{}) bool {
+	if h.roomRepo == nil {
+		return false
+	}
+	members, err := h.roomRepo.GetJoinedRoomMembers(roomID)
+	if err != nil {
+		return false
+	}
+
+	success := false
+	for _, member := range members {
+		if h.SendToUser(member.UserID, payload) {
+			success = true
+		}
+	}
+	return success
 }

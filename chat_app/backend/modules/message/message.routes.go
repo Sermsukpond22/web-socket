@@ -15,6 +15,7 @@ func SetupMessageRoutes(app *fiber.App, msgController *MessageController, wsHand
 	api.Use(auth.JWTMiddleware(authService))
 	api.Get("/unread", msgController.GetUnreadCounts)
 	api.Post("/upload", msgController.UploadFile)
+	api.Get("/room/:room_id", msgController.GetRoomMessages)
 	api.Get("/:friend_id", msgController.GetChatHistory)
 	api.Post("/read/:friend_id", msgController.ReadMessages)
 

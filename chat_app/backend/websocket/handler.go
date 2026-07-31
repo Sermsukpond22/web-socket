@@ -13,8 +13,10 @@ import (
 type WSIncomingMessage struct {
 	Type        string `json:"type"`
 	ID          uint   `json:"id,omitempty"`
-	ReceiverID  uint   `json:"receiver_id"`
-	RecipientID uint   `json:"recipient_id"`
+	ReceiverID  *uint  `json:"receiver_id,omitempty"`
+	RoomID      *uint  `json:"room_id,omitempty"`
+	ReplyToID   *uint  `json:"reply_to_id,omitempty"`
+	RecipientID uint   `json:"recipient_id,omitempty"`
 	Content     string `json:"content"`
 	MsgType     string `json:"msg_type,omitempty"`
 	FileURL     string `json:"file_url,omitempty"`
@@ -22,16 +24,19 @@ type WSIncomingMessage struct {
 }
 
 type WSChatEvent struct {
-	Type       string    `json:"type"`
-	ID         uint      `json:"id"`
-	SenderID   uint      `json:"sender_id"`
-	ReceiverID uint      `json:"receiver_id"`
-	Content    string    `json:"content"`
-	MsgType    string    `json:"msg_type,omitempty"`
-	FileURL    string    `json:"file_url,omitempty"`
-	IsDeleted  bool      `json:"is_deleted,omitempty"`
-	IsEdited   bool      `json:"is_edited,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	Type       string          `json:"type"`
+	ID         uint            `json:"id"`
+	SenderID   uint            `json:"sender_id"`
+	ReceiverID *uint           `json:"receiver_id,omitempty"`
+	RoomID     *uint           `json:"room_id,omitempty"`
+	ReplyToID  *uint           `json:"reply_to_id,omitempty"`
+	ReplyTo    *models.Message `json:"reply_to,omitempty"`
+	Content    string          `json:"content"`
+	MsgType    string          `json:"msg_type,omitempty"`
+	FileURL    string          `json:"file_url,omitempty"`
+	IsDeleted  bool            `json:"is_deleted,omitempty"`
+	IsEdited   bool            `json:"is_edited,omitempty"`
+	CreatedAt  time.Time       `json:"created_at"`
 }
 
 type WSErrorEvent struct {
@@ -40,7 +45,7 @@ type WSErrorEvent struct {
 }
 
 type MessageService interface {
-	SendMessage(senderID, receiverID uint, content, msgType, fileURL string) (*models.Message, error)
+	SendMessage(senderID uint, receiverID, roomID, replyToID *uint, content, msgType, fileURL string) (*models.Message, error)
 	MarkMessagesAsRead(senderID, receiverID uint) error
 	EditMessage(userID, msgID uint, content string) (*models.Message, error)
 	DeleteMessage(userID, msgID uint) error
@@ -150,8 +155,10 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 	case "ping":
 		_ = client.WriteJSON(fiber.Map{"type": "pong"})
 	case "typing":
-		receiverID := incoming.ReceiverID
-		if receiverID == 0 {
+		var receiverID uint
+		if incoming.ReceiverID != nil {
+			receiverID = *incoming.ReceiverID
+		} else if incoming.RecipientID != 0 {
 			receiverID = incoming.RecipientID
 		}
 		if receiverID == 0 || receiverID == client.UserID {
@@ -176,7 +183,7 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			"is_typing": isTyping,
 		})
 	case "chat":
-		savedMsg, err := h.messageService.SendMessage(client.UserID, incoming.ReceiverID, incoming.Content, incoming.MsgType, incoming.FileURL)
+		savedMsg, err := h.messageService.SendMessage(client.UserID, incoming.ReceiverID, incoming.RoomID, incoming.ReplyToID, incoming.Content, incoming.MsgType, incoming.FileURL)
 		if err != nil {
 			_ = client.WriteJSON(WSErrorEvent{
 				Type:    "error",
@@ -190,21 +197,27 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			ID:         savedMsg.ID,
 			SenderID:   savedMsg.SenderID,
 			ReceiverID: savedMsg.ReceiverID,
+			RoomID:     savedMsg.RoomID,
+			ReplyToID:  savedMsg.ReplyToID,
+			ReplyTo:    savedMsg.ReplyTo,
 			Content:    savedMsg.Content,
 			MsgType:    savedMsg.Type,
 			FileURL:    savedMsg.FileURL,
 			CreatedAt:  savedMsg.CreatedAt,
 		}
 
-		// Confirm back to sender
 		_ = client.WriteJSON(chatEvent)
 
-		// Send to target receiver if online (and not same client)
-		if savedMsg.ReceiverID != client.UserID {
-			h.hub.SendToUser(savedMsg.ReceiverID, chatEvent)
+		if savedMsg.RoomID != nil {
+			h.hub.SendToRoom(*savedMsg.RoomID, chatEvent)
+		} else if savedMsg.ReceiverID != nil && *savedMsg.ReceiverID != client.UserID {
+			h.hub.SendToUser(*savedMsg.ReceiverID, chatEvent)
 		}
 	case "read":
-		senderID := incoming.ReceiverID // The sender of the messages that are now read
+		var senderID uint
+		if incoming.ReceiverID != nil {
+			senderID = *incoming.ReceiverID
+		}
 		if senderID == 0 || senderID == client.UserID {
 			return
 		}
@@ -233,6 +246,7 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			ID:         editedMsg.ID,
 			SenderID:   editedMsg.SenderID,
 			ReceiverID: editedMsg.ReceiverID,
+			RoomID:     editedMsg.RoomID,
 			Content:    editedMsg.Content,
 			MsgType:    editedMsg.Type,
 			FileURL:    editedMsg.FileURL,
@@ -241,7 +255,11 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 			CreatedAt:  editedMsg.CreatedAt,
 		}
 		_ = client.WriteJSON(editEvent)
-		h.hub.SendToUser(editedMsg.ReceiverID, editEvent)
+		if editedMsg.RoomID != nil {
+			h.hub.SendToRoom(*editedMsg.RoomID, editEvent)
+		} else if editedMsg.ReceiverID != nil {
+			h.hub.SendToUser(*editedMsg.ReceiverID, editEvent)
+		}
 
 	case "delete_message":
 		msgID := incoming.ID
@@ -259,8 +277,10 @@ func (h *WSHandler) handleMessage(client *Client, incoming WSIncomingMessage) {
 		// To find the receiver, we should ideally fetch the message before deleting.
 		// Since we deleted it (soft delete), we can just broadcast to receiver if we had it.
 		// For now we can require the client to pass receiver_id in incoming message.
-		if incoming.ReceiverID > 0 {
-			h.hub.SendToUser(incoming.ReceiverID, deleteEvent)
+		if incoming.RoomID != nil && *incoming.RoomID > 0 {
+			h.hub.SendToRoom(*incoming.RoomID, deleteEvent)
+		} else if incoming.ReceiverID != nil && *incoming.ReceiverID > 0 {
+			h.hub.SendToUser(*incoming.ReceiverID, deleteEvent)
 		}
 
 	default:

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAuthStore } from './auth'
 import { useFriendsStore } from './friends'
+import { useRoomsStore } from './rooms'
 
 export const useChatStore = defineStore('chat', () => {
   const selectedFriendId = ref(null)
@@ -15,7 +16,13 @@ export const useChatStore = defineStore('chat', () => {
   const unreadCounts = ref({})
   const userStatus = ref({}) // key: user_id, value: { is_online, last_seen }
 
+  const selectedRoomId = ref(null)
+  const roomMessages = ref({}) // key: room_id, value: array of message objects
+
   const activeMessages = computed(() => {
+    if (selectedRoomId.value) {
+      return roomMessages.value[selectedRoomId.value] || []
+    }
     if (!selectedFriendId.value) return []
     return messages.value[selectedFriendId.value] || []
   })
@@ -70,12 +77,21 @@ export const useChatStore = defineStore('chat', () => {
 
   function selectFriend(friendId) {
     selectedFriendId.value = friendId
+    selectedRoomId.value = null
     if (friendId) {
       if (unreadCounts.value[friendId] > 0) {
         unreadCounts.value[friendId] = 0
         sendReadReceipt(friendId)
       }
       fetchMessages(friendId)
+    }
+  }
+
+  function selectRoom(roomId) {
+    selectedRoomId.value = roomId
+    selectedFriendId.value = null
+    if (roomId) {
+      fetchRoomMessages(roomId)
     }
   }
 
@@ -132,6 +148,44 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function fetchRoomMessages(roomId, beforeId = 0) {
+    if (!roomId) return
+    
+    if (beforeId === 0 && roomMessages.value[roomId] && roomMessages.value[roomId].length > 0) {
+      return
+    }
+
+    loading.value = true
+    error.value = null
+    try {
+      const url = beforeId > 0 
+        ? `/api/messages/room/${roomId}?before_id=${beforeId}&limit=50`
+        : `/api/messages/room/${roomId}?limit=50`
+
+      const response = await fetch(url, {
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const newMessages = Array.isArray(data) ? data : []
+        
+        if (!roomMessages.value[roomId]) {
+          roomMessages.value[roomId] = []
+        }
+
+        if (beforeId > 0) {
+          roomMessages.value[roomId] = [...newMessages, ...roomMessages.value[roomId]]
+        } else {
+          roomMessages.value[roomId] = newMessages
+        }
+      }
+    } catch (err) {
+      error.value = err.message
+    } finally {
+      loading.value = false
+    }
+  }
+
   function sendReadReceipt(senderId) {
     if (ws.value && ws.value.readyState === WebSocket.OPEN && senderId) {
       ws.value.send(JSON.stringify({
@@ -147,6 +201,25 @@ export const useChatStore = defineStore('chat', () => {
   function appendMessage(msg) {
     const authStore = useAuthStore()
     const currentUserId = authStore.user?.id
+
+    if (msg.room_id) {
+      if (!roomMessages.value[msg.room_id]) {
+        roomMessages.value[msg.room_id] = []
+      }
+      const list = roomMessages.value[msg.room_id]
+      if (msg.id && list.some(m => m.id === msg.id)) {
+        return
+      }
+      if (msg.id && msg.sender_id === currentUserId) {
+        const tempIndex = list.findIndex(m => m.pending || (typeof m.id === 'string' && m.id.startsWith('temp-')))
+        if (tempIndex !== -1 && list[tempIndex].content === msg.content) {
+          list[tempIndex] = msg
+          return
+        }
+      }
+      list.push(msg)
+      return
+    }
 
     // Determine target conversation ID
     let conversationId
@@ -181,7 +254,7 @@ export const useChatStore = defineStore('chat', () => {
     list.push(msg)
   }
 
-  async function sendMessage(receiverId, content, msgType = 'text', fileUrl = '') {
+  async function sendMessage(receiverId, content, msgType = 'text', fileUrl = '', roomId = null, replyToId = null) {
     if ((!content || !content.trim()) && !fileUrl) return
     const authStore = useAuthStore()
     const trimmed = content.trim()
@@ -190,6 +263,8 @@ export const useChatStore = defineStore('chat', () => {
       id: `temp-${Date.now()}`,
       sender_id: authStore.user?.id,
       receiver_id: receiverId,
+      room_id: roomId,
+      reply_to_id: replyToId,
       content: trimmed,
       type: msgType,
       file_url: fileUrl,
@@ -205,6 +280,8 @@ export const useChatStore = defineStore('chat', () => {
       ws.value.send(JSON.stringify({
         type: 'chat',
         receiver_id: receiverId,
+        room_id: roomId,
+        reply_to_id: replyToId,
         content: trimmed,
         msg_type: msgType,
         file_url: fileUrl
@@ -329,6 +406,9 @@ export const useChatStore = defineStore('chat', () => {
           } else if (data.type === 'friend_request_accepted') {
             friendsStore.fetchFriends()
             friendsStore.fetchPendingRequests()
+          } else if (data.type === 'room_invite') {
+            const roomsStore = useRoomsStore()
+            roomsStore.fetchPendingInvites()
           } else if (data.type === 'error') {
             console.error('[WS Error]', data.message)
             error.value = data.message
@@ -399,7 +479,11 @@ export const useChatStore = defineStore('chat', () => {
     sendReadReceipt,
     editMessage,
     deleteMessage,
-    userStatus
+    userStatus,
+    selectedRoomId,
+    roomMessages,
+    selectRoom,
+    fetchRoomMessages
   }
 })
 

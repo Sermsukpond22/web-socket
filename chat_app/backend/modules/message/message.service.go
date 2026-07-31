@@ -9,9 +9,11 @@ import (
 )
 
 type MessageService interface {
-	SendMessage(senderID, receiverID uint, content, msgType, fileURL string) (*models.Message, error)
+	SendMessage(senderID uint, receiverID, roomID, replyToID *uint, content, msgType, fileURL string) (*models.Message, error)
 	GetChatHistory(userAID, userBID uint) ([]models.Message, error)
 	GetChatHistoryPaginated(userAID, userBID uint, limit int, beforeID uint) ([]models.Message, error)
+	GetRoomChatHistory(roomID uint) ([]models.Message, error)
+	GetRoomChatHistoryPaginated(roomID uint, limit int, beforeID uint) ([]models.Message, error)
 	GetLatestMessageID(userAID, userBID uint) (uint, error)
 	GetUnreadCounts(userID uint) (map[uint]int64, error)
 	MarkMessagesAsRead(senderID, receiverID uint) error
@@ -31,7 +33,7 @@ func NewMessageService(messageRepo MessageRepository, friendRepo friend.FriendRe
 	}
 }
 
-func (s *messageService) SendMessage(senderID, receiverID uint, content, msgType, fileURL string) (*models.Message, error) {
+func (s *messageService) SendMessage(senderID uint, receiverID, roomID, replyToID *uint, content, msgType, fileURL string) (*models.Message, error) {
 	trimmedContent := strings.TrimSpace(content)
 	if trimmedContent == "" && fileURL == "" {
 		return nil, errors.New("message content cannot be empty")
@@ -41,21 +43,26 @@ func (s *messageService) SendMessage(senderID, receiverID uint, content, msgType
 		msgType = "text"
 	}
 
-	if senderID == receiverID {
-		return nil, errors.New("cannot send message to self")
-	}
+	if receiverID != nil {
+		if senderID == *receiverID {
+			return nil, errors.New("cannot send message to self")
+		}
 
-	areFriends, err := s.friendRepo.AreFriends(senderID, receiverID)
-	if err != nil {
-		return nil, err
+		areFriends, err := s.friendRepo.AreFriends(senderID, *receiverID)
+		if err != nil {
+			return nil, err
+		}
+		if !areFriends {
+			return nil, errors.New("users are not accepted friends")
+		}
+	} else if roomID == nil {
+		return nil, errors.New("must specify either receiver_id or room_id")
 	}
-	if !areFriends {
-		return nil, errors.New("users are not accepted friends")
-	}
-
 	msg := &models.Message{
 		SenderID:   senderID,
 		ReceiverID: receiverID,
+		RoomID:     roomID,
+		ReplyToID:  replyToID,
 		Content:    trimmedContent,
 		Type:       msgType,
 		FileURL:    fileURL,
@@ -90,6 +97,14 @@ func (s *messageService) GetChatHistoryPaginated(userAID, userBID uint, limit in
 	}
 
 	return s.messageRepo.GetChatHistoryPaginated(userAID, userBID, limit, beforeID)
+}
+
+func (s *messageService) GetRoomChatHistory(roomID uint) ([]models.Message, error) {
+	return s.messageRepo.GetRoomChatHistory(roomID)
+}
+
+func (s *messageService) GetRoomChatHistoryPaginated(roomID uint, limit int, beforeID uint) ([]models.Message, error) {
+	return s.messageRepo.GetRoomChatHistoryPaginated(roomID, limit, beforeID)
 }
 
 func (s *messageService) MarkMessagesAsRead(senderID, receiverID uint) error {

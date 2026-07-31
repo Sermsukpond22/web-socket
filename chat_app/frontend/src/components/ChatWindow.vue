@@ -1,14 +1,14 @@
 <template>
   <div class="w-full h-full flex flex-col bg-white dark:bg-gray-900">
-    <!-- EMPTY STATE WHEN NO FRIEND SELECTED -->
-    <div v-if="!selectedFriend" class="h-full flex flex-col items-center justify-center p-8 text-center bg-gray-50 dark:bg-gray-800">
+    <!-- EMPTY STATE WHEN NO FRIEND OR ROOM SELECTED -->
+    <div v-if="!selectedFriend && !selectedRoom" class="h-full flex flex-col items-center justify-center p-8 text-center bg-gray-50 dark:bg-gray-800">
       <div class="w-24 h-24 rounded-full border-2 border-gray-900 flex items-center justify-center text-gray-900 dark:text-gray-100 mb-4 shadow-sm">
         <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
       </div>
       <h2 class="text-xl font-light text-gray-900 dark:text-gray-100 mb-1">ข้อความของคุณ</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 max-w-xs mb-6">ส่งข้อความและแชทกับเพื่อนของคุณแบบเรียลไทม์</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 max-w-xs mb-6">ส่งข้อความและแชทกับเพื่อนหรือกลุ่มของคุณแบบเรียลไทม์</p>
     </div>
 
     <!-- ACTIVE CHAT WINDOW -->
@@ -27,25 +27,37 @@
             </svg>
           </button>
 
-          <!-- Friend Avatar -->
+          <!-- Friend/Room Avatar -->
           <div class="relative cursor-pointer" @click="openFriendProfile">
             <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
-              <img v-if="selectedFriend.avatar_url" :src="getFullUrl(selectedFriend.avatar_url)" class="w-full h-full object-cover" />
-              <span v-else>{{ getInitial(selectedFriend.username || selectedFriend.email) }}</span>
+              <img v-if="currentHeader.avatar_url" :src="getFullUrl(currentHeader.avatar_url)" class="w-full h-full object-cover" />
+              <span v-else>{{ getInitial(currentHeader.name) }}</span>
             </div>
-            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" :class="friendStatus.is_online ? 'bg-green-500' : 'bg-gray-400'"></span>
+            <span v-if="selectedFriend" class="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" :class="friendStatus.is_online ? 'bg-green-500' : 'bg-gray-400'"></span>
           </div>
 
-          <!-- Friend Info -->
+          <!-- Info -->
           <div>
             <h3 class="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
-              {{ selectedFriend.username || selectedFriend.email }}
+              {{ currentHeader.name }}
             </h3>
-            <p v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="text-xs text-sky-500 font-medium animate-pulse">กำลังพิมพ์...</p>
-            <p v-else-if="friendStatus.is_online" class="text-xs text-green-600 font-medium">ออนไลน์</p>
-            <p v-else-if="friendStatus.last_seen" class="text-xs text-gray-400 font-medium">ใช้งานล่าสุด: {{ formatLastSeen(friendStatus.last_seen) }}</p>
-            <p v-else class="text-xs text-gray-400 font-medium">ออฟไลน์</p>
+            <div v-if="selectedFriend">
+              <p v-if="chatStore.isUserTyping(chatStore.selectedFriendId)" class="text-xs text-sky-500 font-medium animate-pulse">กำลังพิมพ์...</p>
+              <p v-else-if="friendStatus.is_online" class="text-xs text-green-600 font-medium">ออนไลน์</p>
+              <p v-else-if="friendStatus.last_seen" class="text-xs text-gray-400 font-medium">ใช้งานล่าสุด: {{ formatLastSeen(friendStatus.last_seen) }}</p>
+              <p v-else class="text-xs text-gray-400 font-medium">ออฟไลน์</p>
+            </div>
+            <div v-else-if="selectedRoom">
+              <p class="text-xs text-gray-400 font-medium">กลุ่มสนทนา</p>
+            </div>
           </div>
+        </div>
+        
+        <!-- Group Actions -->
+        <div v-if="selectedRoom" class="flex items-center">
+          <button @click="handleInviteMember" class="text-xs bg-sky-500 hover:bg-sky-600 text-white py-1.5 px-3 rounded-md transition font-semibold flex items-center space-x-1 shadow-sm">
+            <span>+ เชิญเพื่อน</span>
+          </button>
         </div>
       </div>
 
@@ -62,7 +74,7 @@
           v-if="chatStore.activeMessages.length === 0" 
           class="h-full flex items-center justify-center text-center text-gray-400 text-sm"
         >
-          ยังไม่มีข้อความ ทักทาย {{ selectedFriend.username || 'เพื่อน' }} เลยสิ!
+          ยังไม่มีข้อความ ทักทายเลยสิ!
         </div>
 
         <div
@@ -76,40 +88,61 @@
           <!-- Message Bubble -->
           <!-- Message Bubble Container -->
           <div class="relative group flex items-start max-w-[85%] md:max-w-[75%]" :class="isSelf(msg) ? 'flex-row-reverse space-x-reverse space-x-2' : 'flex-row space-x-2'">
+            <!-- Sender Avatar (for groups) -->
+            <div v-if="!isSelf(msg) && selectedRoom" class="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 text-white flex flex-shrink-0 items-center justify-center font-bold text-xs shadow-sm overflow-hidden mr-1 mt-1">
+              <img v-if="msg.sender?.avatar_url" :src="getFullUrl(msg.sender.avatar_url)" class="w-full h-full object-cover" />
+              <span v-else>{{ getInitial(msg.sender?.username || msg.sender?.email) }}</span>
+            </div>
+
             <!-- Message Content -->
-            <div
-              :class="[
-                'px-4 py-2 text-sm rounded-2xl break-words shadow-sm',
-                msg.is_deleted ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 italic border border-gray-200' :
-                isSelf(msg) ? 'bg-sky-500 text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm'
-              ]"
-            >
-              <template v-if="msg.is_deleted">
-                🚫 ข้อความนี้ถูกลบแล้ว
-              </template>
-              <template v-else>
-                <!-- Image -->
-                <div v-if="msg.type === 'image' && msg.file_url">
-                  <img :src="apiUrl + msg.file_url" alt="image" class="rounded-lg max-w-full h-auto cursor-pointer object-cover mb-1" />
+            <div class="flex flex-col">
+              <span v-if="!isSelf(msg) && selectedRoom" class="text-[10px] text-gray-500 mb-0.5 ml-1">{{ msg.sender?.username || msg.sender?.email || 'User' }}</span>
+              <div
+                :class="[
+                  'px-4 py-2 text-sm rounded-2xl break-words shadow-sm flex flex-col',
+                  msg.is_deleted ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 italic border border-gray-200' :
+                  isSelf(msg) ? 'bg-sky-500 text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm'
+                ]"
+              >
+                <!-- Quoted Message Block -->
+                <div v-if="msg.reply_to" class="mb-2 p-2 rounded-lg text-xs border-l-4 opacity-80" :class="isSelf(msg) ? 'bg-white/20 border-white' : 'bg-black/5 dark:bg-white/10 border-sky-500'">
+                  <div v-if="msg.reply_to.is_deleted" class="italic">ข้อความนี้ถูกลบแล้ว</div>
+                  <div v-else>
+                    <span class="font-bold mr-1">{{ msg.reply_to.sender?.username || 'User' }}:</span>
+                    <span class="truncate max-w-[150px] inline-block align-bottom">{{ msg.reply_to.content || 'ไฟล์แนบ' }}</span>
+                  </div>
                 </div>
-                <!-- File -->
-                <div v-else-if="msg.type === 'file' && msg.file_url" class="flex items-center space-x-2 bg-black/10 p-2 rounded-lg mb-1">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-                  <a :href="apiUrl + msg.file_url" target="_blank" class="underline text-sm font-semibold truncate">{{ msg.content || 'ไฟล์แนบ' }}</a>
-                </div>
-                <!-- Text / Fallback -->
-                <div v-if="msg.content && msg.type !== 'file'">
-                  {{ msg.content }}
-                </div>
-              </template>
+
+                <template v-if="msg.is_deleted">
+                  🚫 ข้อความนี้ถูกลบแล้ว
+                </template>
+                <template v-else>
+                  <!-- Image -->
+                  <div v-if="msg.type === 'image' && msg.file_url">
+                    <img :src="apiUrl + msg.file_url" alt="image" class="rounded-lg max-w-full h-auto cursor-pointer object-cover mb-1" />
+                  </div>
+                  <!-- File -->
+                  <div v-else-if="msg.type === 'file' && msg.file_url" class="flex items-center space-x-2 bg-black/10 p-2 rounded-lg mb-1">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                    <a :href="apiUrl + msg.file_url" target="_blank" class="underline text-sm font-semibold truncate">{{ msg.content || 'ไฟล์แนบ' }}</a>
+                  </div>
+                  <!-- Text / Fallback -->
+                  <div v-if="msg.content && msg.type !== 'file'">
+                    {{ msg.content }}
+                  </div>
+                </template>
+              </div>
             </div>
             
-            <!-- Actions (Edit/Delete) -->
-            <div v-if="isSelf(msg) && !msg.is_deleted && msg.id && !msg.pending" class="opacity-0 group-hover:opacity-100 transition flex flex-col space-y-1 mt-1">
-              <button @click="startEdit(msg)" class="text-gray-400 hover:text-sky-500 p-1 bg-gray-50 dark:bg-gray-800 rounded-full" title="แก้ไข">
+            <!-- Actions (Edit/Delete/Reply) -->
+            <div v-if="!msg.is_deleted && msg.id && !msg.pending" class="opacity-0 group-hover:opacity-100 transition flex flex-row items-center space-x-1 self-center">
+              <button @click="startReply(msg)" class="text-gray-400 hover:text-sky-500 p-1.5 bg-gray-50 dark:bg-gray-800 rounded-full" title="ตอบกลับ">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+              </button>
+              <button v-if="isSelf(msg)" @click="startEdit(msg)" class="text-gray-400 hover:text-sky-500 p-1.5 bg-gray-50 dark:bg-gray-800 rounded-full" title="แก้ไข">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
               </button>
-              <button @click="confirmDelete(msg)" class="text-gray-400 hover:text-red-500 p-1 bg-gray-50 dark:bg-gray-800 rounded-full" title="ลบ">
+              <button v-if="isSelf(msg)" @click="confirmDelete(msg)" class="text-gray-400 hover:text-red-500 p-1.5 bg-gray-50 dark:bg-gray-800 rounded-full" title="ลบ">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
               </button>
             </div>
@@ -148,6 +181,15 @@
             <span class="truncate max-w-[200px] md:max-w-md">{{ editingMsg.content }}</span>
           </div>
           <button @click="cancelEdit" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 p-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+        <div v-if="replyingToMessage" class="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-2 rounded-t-lg border border-gray-200 border-b-0">
+          <div class="text-xs text-gray-700 dark:text-gray-300 flex flex-col">
+            <span class="font-bold text-sky-600">ตอบกลับถึง {{ replyingToMessage.sender?.username || 'User' }}</span>
+            <span class="truncate max-w-[200px] md:max-w-md italic">{{ replyingToMessage.content || 'ไฟล์แนบ' }}</span>
+          </div>
+          <button @click="cancelReply" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 p-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -203,6 +245,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useFriendsStore } from '../stores/friends'
 import { useChatStore } from '../stores/chat'
+import { useRoomsStore } from '../stores/rooms'
 import ProfileModal from './ProfileModal.vue'
 
 import Swal from 'sweetalert2'
@@ -214,6 +257,7 @@ const emit = defineEmits(['back'])
 const authStore = useAuthStore()
 const friendsStore = useFriendsStore()
 const chatStore = useChatStore()
+const roomsStore = useRoomsStore()
 
 const inputMessage = ref('')
 const messagesContainer = ref(null)
@@ -222,6 +266,7 @@ const allLoaded = ref(false)
 const fileInput = ref(null)
 const isUploading = ref(false)
 const editingMsg = ref(null)
+const replyingToMessage = ref(null)
 const showEmojiPicker = ref(false)
 const emojis = ['😀','😂','🥰','😎','😭','😡','👍','🙏','❤️','🔥','✨','🎉']
 let typingThrottleTimer = null
@@ -257,6 +302,23 @@ const selectedFriend = computed(() => {
     id: chatStore.selectedFriendId,
     username: `User #${chatStore.selectedFriendId}`
   }
+})
+
+const selectedRoom = computed(() => {
+  if (!chatStore.selectedRoomId) return null
+  return roomsStore.rooms.find(r => r.id === chatStore.selectedRoomId) || {
+    id: chatStore.selectedRoomId,
+    name: `Room #${chatStore.selectedRoomId}`
+  }
+})
+
+const currentHeader = computed(() => {
+  if (selectedFriend.value) {
+    return { name: selectedFriend.value.username || selectedFriend.value.email, avatar_url: selectedFriend.value.avatar_url }
+  } else if (selectedRoom.value) {
+    return { name: selectedRoom.value.name, avatar_url: selectedRoom.value.avatar_url }
+  }
+  return { name: 'Chat', avatar_url: '' }
 })
 
 const friendStatus = computed(() => {
@@ -304,7 +366,8 @@ function scrollToBottom() {
 }
 
 async function handleScroll() {
-  if (!messagesContainer.value || !chatStore.selectedFriendId) return
+  if (!messagesContainer.value) return
+  if (!chatStore.selectedFriendId && !chatStore.selectedRoomId) return
   
   if (messagesContainer.value.scrollTop === 0 && !loadingMore.value && !allLoaded.value) {
     const messages = chatStore.activeMessages
@@ -315,7 +378,11 @@ async function handleScroll() {
         const previousScrollHeight = messagesContainer.value.scrollHeight
         const previousCount = messages.length
         
-        await chatStore.fetchMessages(chatStore.selectedFriendId, oldestMessageId)
+        if (chatStore.selectedFriendId) {
+          await chatStore.fetchMessages(chatStore.selectedFriendId, oldestMessageId)
+        } else if (chatStore.selectedRoomId) {
+          await chatStore.fetchRoomMessages(chatStore.selectedRoomId, oldestMessageId)
+        }
         
         if (chatStore.activeMessages.length === previousCount) {
           allLoaded.value = true
@@ -323,7 +390,6 @@ async function handleScroll() {
 
         nextTick(() => {
           if (messagesContainer.value && chatStore.activeMessages.length > previousCount) {
-            // maintain scroll position only if new messages were added
             messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight - previousScrollHeight
           }
         })
@@ -376,7 +442,15 @@ async function handleFileUpload(event) {
     if (response.ok) {
       const data = await response.json()
       const isImage = file.type.startsWith('image/')
-      chatStore.sendMessage(chatStore.selectedFriendId, file.name, isImage ? 'image' : 'file', data.file_url)
+      chatStore.sendMessage(
+        chatStore.selectedFriendId, 
+        file.name, 
+        isImage ? 'image' : 'file', 
+        data.file_url, 
+        chatStore.selectedRoomId,
+        replyingToMessage.value ? replyingToMessage.value.id : null
+      )
+      replyingToMessage.value = null
       scrollToBottom()
     } else {
       throw new Error('อัปโหลดไม่สำเร็จ')
@@ -399,6 +473,15 @@ function cancelEdit() {
   inputMessage.value = ''
 }
 
+function startReply(msg) {
+  replyingToMessage.value = { ...msg }
+  inputMessage.value = ''
+}
+
+function cancelReply() {
+  replyingToMessage.value = null
+}
+
 async function confirmDelete(msg) {
   const result = await Swal.fire({
     title: 'ต้องการลบข้อความนี้?',
@@ -416,12 +499,22 @@ async function confirmDelete(msg) {
 }
 
 function handleSend() {
-  if (!inputMessage.value.trim() || !chatStore.selectedFriendId) return
+  if (!inputMessage.value.trim() && !fileInput.value?.files?.length) return
+  if (!chatStore.selectedFriendId && !chatStore.selectedRoomId) return
+  
   if (editingMsg.value) {
     chatStore.editMessage(editingMsg.value.id, chatStore.selectedFriendId, inputMessage.value.trim())
     cancelEdit()
   } else {
-    chatStore.sendMessage(chatStore.selectedFriendId, inputMessage.value)
+    chatStore.sendMessage(
+      chatStore.selectedFriendId, 
+      inputMessage.value, 
+      'text', 
+      '', 
+      chatStore.selectedRoomId,
+      replyingToMessage.value ? replyingToMessage.value.id : null
+    )
+    replyingToMessage.value = null
     inputMessage.value = ''
   }
   scrollToBottom()
@@ -449,5 +542,49 @@ watch(
     scrollToBottom()
   }
 )
-</script>
 
+watch(
+  () => chatStore.selectedRoomId,
+  () => {
+    allLoaded.value = false
+    scrollToBottom()
+  }
+)
+
+async function handleInviteMember() {
+  if (!chatStore.selectedRoomId) return
+
+  // Create a list of friends to select from
+  const friendOptions = {}
+  friendsStore.friends.forEach(f => {
+    friendOptions[f.id] = f.username || f.email
+  })
+
+  if (Object.keys(friendOptions).length === 0) {
+    Swal.fire('ไม่มีเพื่อน', 'คุณต้องมีเพื่อนก่อนถึงจะเชิญเข้ากลุ่มได้', 'warning')
+    return
+  }
+
+  const { value: selectedUserId } = await Swal.fire({
+    title: 'เชิญเพื่อนเข้ากลุ่ม',
+    input: 'select',
+    inputOptions: friendOptions,
+    inputPlaceholder: 'เลือกเพื่อนที่ต้องการเชิญ...',
+    showCancelButton: true,
+    confirmButtonText: 'เชิญ',
+    cancelButtonText: 'ยกเลิก',
+    inputValidator: (value) => {
+      if (!value) return 'กรุณาเลือกเพื่อน'
+    }
+  })
+
+  if (selectedUserId) {
+    try {
+      await roomsStore.inviteToRoom(chatStore.selectedRoomId, parseInt(selectedUserId))
+      Swal.fire({ icon: 'success', title: 'ส่งคำเชิญแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 })
+    } catch (err) {
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถส่งคำเชิญได้', 'error')
+    }
+  }
+}
+</script>
